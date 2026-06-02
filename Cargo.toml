@@ -1,0 +1,11 @@
+[package]
+name = "velque"
+version = "0.1.0"
+edition = "2021"
+description = "Velque: order book for tokenized stocks on Solana, night auctions at one price"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+pinocchio = { version = "0.11.1", features = ["cpi"] }
