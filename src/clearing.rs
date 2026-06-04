@@ -35,3 +35,29 @@ impl Orders {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Outcome {
+    pub price: u64,
+    pub volume: u64,
+    pub imbalance: u64,
+}
+
+/// Indices of live orders by ascending price; at equal prices in arrival
+/// order (the sort is stable).
+fn sorted(o: &Orders, idx: &mut [u8; CAP]) -> usize {
+    let mut k = 0;
+    for i in 0..o.n {
+        if !o.live[i] {
+            continue;
+        }
+        let mut j = k;
+        while j > 0 && o.price[idx[j - 1] as usize] > o.price[i] {
+            idx[j] = idx[j - 1];
+            j -= 1;
+        }
+        idx[j] = i as u8;
+        k += 1;
+    }
+    k
+}
+
