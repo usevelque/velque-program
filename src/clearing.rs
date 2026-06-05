@@ -61,3 +61,68 @@ fn sorted(o: &Orders, idx: &mut [u8; CAP]) -> usize {
     k
 }
 
+/// Clearing price. volume == 0 means the sides did not cross.
+pub fn find_price(o: &Orders, reference: u64, tick: u64) -> Outcome {
+    let mut idx = [0u8; CAP];
+    let k = sorted(o, &mut idx);
+
+    let mut buy_total = 0u64;
+    for &i in &idx[..k] {
+        if o.side[i as usize] == BUY {
+            buy_total = buy_total.saturating_add(o.qty[i as usize]);
+        }
+    }
+
+    let mut best: Option<(u64, u64, u64)> = None; // (exec, imb, dist)
+    let (mut lo, mut hi) = (0u64, 0u64);
+    let mut sell_le = 0u64; // sells priced <= p
+    let mut buy_below = 0u64; // buys priced < p
+    let mut g = 0;
+    while g < k {
+        let p = o.price[idx[g] as usize];
+        let mut end = g;
+        let (mut gb, mut gs) = (0u64, 0u64);
+        while end < k && o.price[idx[end] as usize] == p {
+            let i = idx[end] as usize;
+            if o.side[i] == BUY { gb += o.qty[i] } else { gs += o.qty[i] }
+            end += 1;
+        }
+        sell_le = sell_le.saturating_add(gs);
+        let buy_ge = buy_total - buy_below;
+        let exec = buy_ge.min(sell_le);
+        if exec > 0 {
+            let imb = buy_ge.max(sell_le) - exec;
+            let dist = p.abs_diff(reference);
+            match best {
+                None => {
+                    best = Some((exec, imb, dist));
+                    lo = p;
+                    hi = p;
+                }
+                Some((be, bi, bd)) => {
+                    let better = exec > be
+                        || (exec == be && imb < bi)
+                        || (exec == be && imb == bi && dist < bd);
+                    if better {
+                        best = Some((exec, imb, dist));
+                        lo = p;
+                        hi = p;
+                    } else if exec == be && imb == bi && dist == bd {
+                        hi = p; // ascending scan: lo is already lower
+                    }
+                }
+            }
+        }
+        buy_below = buy_below.saturating_add(gb);
+        g = end;
+    }
+
+    match best {
+        None => Outcome { price: 0, volume: 0, imbalance: 0 },
+        Some((exec, imb, _)) => {
+            let price = if lo == hi { lo } else { ((lo + hi) / 2) / tick * tick };
+            Outcome { price, volume: exec, imbalance: imb }
+        }
+    }
+}
+
