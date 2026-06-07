@@ -126,3 +126,62 @@ pub fn find_price(o: &Orders, reference: u64, tick: u64) -> Outcome {
     }
 }
 
+/// Fills one price group of a side: in full if it fits, otherwise pro rata
+/// by size, in lot multiples, with the tail going out lot by lot in arrival order.
+fn fill_group(o: &Orders, group: &[u8], side: u8, lot: u64, remaining: &mut u64, fills: &mut [u64; CAP]) {
+    let mut total = 0u64;
+    for &i in group {
+        if o.side[i as usize] == side {
+            total = total.saturating_add(o.qty[i as usize]);
+        }
+    }
+    if total == 0 {
+        return;
+    }
+    if total <= *remaining {
+        for &i in group {
+            if o.side[i as usize] == side {
+                fills[i as usize] = o.qty[i as usize];
+            }
+        }
+        *remaining -= total;
+        return;
+    }
+    let rem = *remaining;
+    let mut given = 0u64;
+    for &i in group {
+        let i = i as usize;
+        if o.side[i] == side {
+            let share = (o.qty[i] as u128 * rem as u128 / total as u128) as u64 / lot * lot;
+            fills[i] = share;
+            given += share;
+        }
+    }
+    let mut left = rem - given;
+    // the tail goes in arrival order, not in sorted order
+    let mut order = [0u8; CAP];
+    let mut m = 0;
+    for &i in group {
+        if o.side[i as usize] == side {
+            let mut j = m;
+            while j > 0 && order[j - 1] > i {
+                order[j] = order[j - 1];
+                j -= 1;
+            }
+            order[j] = i;
+            m += 1;
+        }
+    }
+    for &i in &order[..m] {
+        let i = i as usize;
+        if left < lot {
+            break;
+        }
+        if fills[i] + lot <= o.qty[i] {
+            fills[i] += lot;
+            left -= lot;
+        }
+    }
+    *remaining = 0;
+}
+
