@@ -185,3 +185,46 @@ fn fill_group(o: &Orders, group: &[u8], side: u8, lot: u64, remaining: &mut u64,
     *remaining = 0;
 }
 
+/// How much of each order is filled at price `price` and volume `volume`.
+pub fn allocate(o: &Orders, price: u64, volume: u64, lot: u64, fills: &mut [u64; CAP]) {
+    for f in fills.iter_mut() {
+        *f = 0;
+    }
+    if volume == 0 {
+        return;
+    }
+    let mut idx = [0u8; CAP];
+    let k = sorted(o, &mut idx);
+
+    // buys: from the highest price down, while the price is >= price
+    let mut remaining = volume;
+    let mut end = k;
+    while end > 0 && remaining > 0 {
+        let p = o.price[idx[end - 1] as usize];
+        if p < price {
+            break;
+        }
+        let mut start = end;
+        while start > 0 && o.price[idx[start - 1] as usize] == p {
+            start -= 1;
+        }
+        fill_group(o, &idx[start..end], BUY, lot, &mut remaining, fills);
+        end = start;
+    }
+
+    // sells: from the lowest price up, while the price is <= price
+    let mut remaining = volume;
+    let mut start = 0;
+    while start < k && remaining > 0 {
+        let p = o.price[idx[start] as usize];
+        if p > price {
+            break;
+        }
+        let mut end = start;
+        while end < k && o.price[idx[end] as usize] == p {
+            end += 1;
+        }
+        fill_group(o, &idx[start..end], SELL, lot, &mut remaining, fills);
+        start = end;
+    }
+}
