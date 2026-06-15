@@ -35,3 +35,17 @@
 //! | 67  | 1   | internal: 1 = the remainder carries over         |
 //! | 72  | 8   | internal: escrow that moves with the remainder   |
 //!
+
+use crate::clearing::CAP;
+use pinocchio::Address;
+
+pub const HEADER: usize = 128;
+pub const ENTRY: usize = 80;
+pub const BOOK_LEN: usize = HEADER + CAP * ENTRY;
+pub const BOOK_TAG: u8 = 7;
+pub const TIF_ONE: u8 = 0;
+pub const TIF_GTC: u8 = 1;
+
+pub const LIVE: u8 = 1;
+pub const CANCELLED: u8 = 2;
+pub const CLAIMED: u8 = 3;
