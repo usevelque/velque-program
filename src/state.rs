@@ -49,3 +49,27 @@ pub const TIF_GTC: u8 = 1;
 pub const LIVE: u8 = 1;
 pub const CANCELLED: u8 = 2;
 pub const CLAIMED: u8 = 3;
+
+pub fn get_u64(d: &[u8], off: usize) -> u64 {
+    let mut b = [0u8; 8];
+    b.copy_from_slice(&d[off..off + 8]);
+    u64::from_le_bytes(b)
+}
+pub fn get_i64(d: &[u8], off: usize) -> i64 {
+    get_u64(d, off) as i64
+}
+pub fn put_u64(d: &mut [u8], off: usize, v: u64) {
+    d[off..off + 8].copy_from_slice(&v.to_le_bytes());
+}
+pub fn put_i64(d: &mut [u8], off: usize, v: i64) {
+    put_u64(d, off, v as u64)
+}
+pub fn get_addr(d: &[u8], off: usize) -> Address {
+    let mut b = [0u8; 32];
+    b.copy_from_slice(&d[off..off + 32]);
+    Address::new_from_array(b)
+}
+pub fn put_addr(d: &mut [u8], off: usize, a: &Address) {
+    d[off..off + 32].copy_from_slice(a.as_ref());
+}
+
