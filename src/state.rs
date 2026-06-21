@@ -73,3 +73,41 @@ pub fn put_addr(d: &mut [u8], off: usize, a: &Address) {
     d[off..off + 32].copy_from_slice(a.as_ref());
 }
 
+pub mod b {
+    pub const BUMP: usize = 1;
+    pub const STATE: usize = 2;
+    pub const COUNT: usize = 4;
+    pub const MARKET: usize = 8;
+    pub const AUCTION_ID: usize = 40;
+    pub const WINDOW_END: usize = 48;
+    pub const CLEAR_PRICE: usize = 56;
+    pub const VOLUME: usize = 64;
+    pub const IMBALANCE: usize = 72;
+    pub const REFERENCE: usize = 80;
+    pub const CLEARED_AT: usize = 88;
+    pub const PAYER: usize = 96;
+}
+
+pub mod e {
+    pub const OWNER: usize = 0;
+    pub const PRICE: usize = 32;
+    pub const QTY: usize = 40;
+    pub const FILLED: usize = 48;
+    pub const ESCROW: usize = 56;
+    pub const SIDE: usize = 64;
+    pub const STATUS: usize = 65;
+    pub const TIF: usize = 66;
+    pub const ROLL: usize = 67;
+    pub const ROLL_ESCROW: usize = 72;
+}
+
+pub fn entry_off(i: usize) -> usize {
+    HEADER + i * ENTRY
+}
+
+pub fn count(book: &[u8]) -> usize {
+    u16::from_le_bytes([book[b::COUNT], book[b::COUNT + 1]]) as usize
+}
+pub fn set_count(book: &mut [u8], n: usize) {
+    book[b::COUNT..b::COUNT + 2].copy_from_slice(&(n as u16).to_le_bytes());
+}
