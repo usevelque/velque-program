@@ -2,6 +2,38 @@
 //!
 //! Price is always quote units per one whole base token (10^decimals base).
 //!
+//! ## Market, PDA ["market", base_mint], MARKET_LEN bytes, tag 9
+//!
+//! | off | len | field                                            |
+//! |-----|-----|--------------------------------------------------|
+//! | 0   | 1   | tag                                              |
+//! | 1   | 1   | market bump                                      |
+//! | 2   | 1   | base decimals                                    |
+//! | 3   | 1   | quote decimals                                   |
+//! | 8   | 32  | authority: sets the reference price (oracle)     |
+//! | 40  | 32  | base_mint (tokenized stock)                      |
+//! | 72  | 32  | quote_mint (USDC)                                |
+//! | 104 | 32  | base token program (Token or Token-2022)         |
+//! | 136 | 32  | quote token program                              |
+//! | 168 | 32  | vbase: the market's base ATA                     |
+//! | 200 | 32  | vquote: the market's quote ATA                   |
+//! | 232 | 8   | window_secs                                      |
+//! | 240 | 8   | tick                                             |
+//! | 248 | 8   | lot                                              |
+//! | 256 | 8   | auction_id of the current window                 |
+//! | 264 | 8   | window_start (unix)                              |
+//! | 272 | 8   | window_end (unix)                                |
+//! | 280 | 8   | reference (reference price)                      |
+//! | 288 | 8   | last_price (last clearing or trade)              |
+//! | 296 | 8   | auctions_cleared                                 |
+//! | 304 | 8   | ref_updated_at (unix), 0 = never                 |
+//! | 312 | 8   | max_age: seconds the reference stays fresh       |
+//! | 320 | 8   | band_bps: day book band                          |
+//! | 328 | 8   | day_seq: day book queue counter                  |
+//!
+//! Session: if the reference was updated no more than max_age ago, it is Day
+//! (continuous book); otherwise it is Dark (windowed auctions).
+//!
 //! ## Window book, PDA ["book", market, auction_id le], tag 7
 //!
 //! A header of HEADER bytes, then CAP entries of ENTRY bytes each.
