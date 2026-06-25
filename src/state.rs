@@ -172,3 +172,13 @@ pub fn count(book: &[u8]) -> usize {
 pub fn set_count(book: &mut [u8], n: usize) {
     book[b::COUNT..b::COUNT + 2].copy_from_slice(&(n as u16).to_le_bytes());
 }
+
+/// How much quote `qty` base costs at `price`. The buyer pays rounded up,
+/// the seller receives rounded down: the dust stays in the vault, so the
+/// vault can never go negative.
+pub fn quote_for(price: u64, qty: u64, decimals: u8, round_up: bool) -> Option<u64> {
+    let unit = 10u128.checked_pow(decimals as u32)?;
+    let num = (price as u128).checked_mul(qty as u128)?;
+    let v = if round_up { num.div_ceil(unit) } else { num / unit };
+    u64::try_from(v).ok()
+}
