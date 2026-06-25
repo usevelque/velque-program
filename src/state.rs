@@ -71,6 +71,9 @@
 use crate::clearing::CAP;
 use pinocchio::Address;
 
+pub const MARKET_LEN: usize = 336;
+pub const MARKET_TAG: u8 = 7;
+
 pub const HEADER: usize = 128;
 pub const ENTRY: usize = 80;
 pub const BOOK_LEN: usize = HEADER + CAP * ENTRY;
@@ -103,6 +106,32 @@ pub fn get_addr(d: &[u8], off: usize) -> Address {
 }
 pub fn put_addr(d: &mut [u8], off: usize, a: &Address) {
     d[off..off + 32].copy_from_slice(a.as_ref());
+}
+
+pub mod m {
+    pub const BUMP: usize = 1;
+    pub const BASE_DEC: usize = 2;
+    pub const QUOTE_DEC: usize = 3;
+    pub const AUTHORITY: usize = 8;
+    pub const BASE_MINT: usize = 40;
+    pub const QUOTE_MINT: usize = 72;
+    pub const BASE_PROG: usize = 104;
+    pub const QUOTE_PROG: usize = 136;
+    pub const VBASE: usize = 168;
+    pub const VQUOTE: usize = 200;
+    pub const WINDOW_SECS: usize = 232;
+    pub const TICK: usize = 240;
+    pub const LOT: usize = 248;
+    pub const AUCTION_ID: usize = 256;
+    pub const WINDOW_START: usize = 264;
+    pub const WINDOW_END: usize = 272;
+    pub const REFERENCE: usize = 280;
+    pub const LAST_PRICE: usize = 288;
+    pub const CLEARED: usize = 296;
+    pub const REF_AT: usize = 304;
+    pub const MAX_AGE: usize = 312;
+    pub const BAND_BPS: usize = 320;
+    pub const DAY_SEQ: usize = 328;
 }
 
 pub mod b {
