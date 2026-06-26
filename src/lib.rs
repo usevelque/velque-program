@@ -27,3 +27,29 @@ mod entry {
     pinocchio::nostd_panic_handler!();
 }
 
+#[repr(u32)]
+pub enum VelqueError {
+    BadPda = 1,
+    BadAccount = 2,
+    BadParams = 3,
+    WindowClosed = 4,
+    WindowOpen = 5,
+    BookFull = 6,
+    NotOwner = 7,
+    BadStatus = 8,
+    NotCleared = 9,
+    Math = 10,
+    Unauthorized = 11,
+    SessionDay = 12,
+    SessionDark = 13,
+    OutOfBand = 14,
+    NothingToMove = 15,
+    BadProgram = 16,
+}
+
+impl From<VelqueError> for ProgramError {
+    fn from(e: VelqueError) -> Self {
+        ProgramError::Custom(e as u32)
+    }
+}
+
