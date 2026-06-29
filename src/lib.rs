@@ -53,3 +53,14 @@ impl From<VelqueError> for ProgramError {
     }
 }
 
+pub fn process_instruction(
+    program_id: &Address,
+    accounts: &mut [AccountView],
+    data: &[u8],
+) -> ProgramResult {
+    let accounts: &[AccountView] = accounts;
+    match data.split_first() {
+        _ => Err(ProgramError::InvalidInstructionData),
+    }
+}
+
