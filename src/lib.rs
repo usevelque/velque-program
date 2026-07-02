@@ -64,3 +64,21 @@ pub fn process_instruction(
     }
 }
 
+// ================================================================ helpers
+
+fn read_u64(d: &[u8], i: usize) -> Result<u64, ProgramError> {
+    d.get(i..i + 8)
+        .map(|s| u64::from_le_bytes(s.try_into().unwrap()))
+        .ok_or(ProgramError::InvalidInstructionData)
+}
+
+fn read_u16(d: &[u8], i: usize) -> Result<u16, ProgramError> {
+    d.get(i..i + 2)
+        .map(|s| u16::from_le_bytes(s.try_into().unwrap()))
+        .ok_or(ProgramError::InvalidInstructionData)
+}
+
+fn now() -> Result<i64, ProgramError> {
+    Ok(Clock::get()?.unix_timestamp)
+}
+
