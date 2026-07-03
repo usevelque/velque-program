@@ -112,3 +112,34 @@ impl MarketView {
     }
 }
 
+fn load_market(program_id: &Address, market: &AccountView) -> Result<MarketView, ProgramError> {
+    if !market.owned_by(program_id) {
+        return Err(VelqueError::BadAccount.into());
+    }
+    let d = market.try_borrow()?;
+    if d.len() != MARKET_LEN || d[0] != MARKET_TAG {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    Ok(MarketView {
+        bump: d[m::BUMP],
+        base_dec: d[m::BASE_DEC],
+        quote_dec: d[m::QUOTE_DEC],
+        authority: get_addr(&d, m::AUTHORITY),
+        base_mint: get_addr(&d, m::BASE_MINT),
+        quote_mint: get_addr(&d, m::QUOTE_MINT),
+        base_prog: get_addr(&d, m::BASE_PROG),
+        quote_prog: get_addr(&d, m::QUOTE_PROG),
+        vbase: get_addr(&d, m::VBASE),
+        vquote: get_addr(&d, m::VQUOTE),
+        window_secs: get_u64(&d, m::WINDOW_SECS),
+        tick: get_u64(&d, m::TICK),
+        lot: get_u64(&d, m::LOT),
+        auction_id: get_u64(&d, m::AUCTION_ID),
+        window_end: get_i64(&d, m::WINDOW_END),
+        reference: get_u64(&d, m::REFERENCE),
+        ref_at: get_i64(&d, m::REF_AT),
+        max_age: get_u64(&d, m::MAX_AGE),
+        band_bps: get_u64(&d, m::BAND_BPS),
+    })
+}
+
