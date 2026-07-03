@@ -143,3 +143,7 @@ fn load_market(program_id: &Address, market: &AccountView) -> Result<MarketView,
     })
 }
 
+fn book_key(market: &Address, auction_id: u64, program_id: &Address) -> (Address, u8) {
+    Address::find_program_address(&[SEED_BOOK, market.as_ref(), &auction_id.to_le_bytes()], program_id)
+}
+
