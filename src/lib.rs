@@ -82,3 +82,33 @@ fn now() -> Result<i64, ProgramError> {
     Ok(Clock::get()?.unix_timestamp)
 }
 
+/// Market snapshot needed by the instructions.
+struct MarketView {
+    bump: u8,
+    base_dec: u8,
+    quote_dec: u8,
+    authority: Address,
+    base_mint: Address,
+    quote_mint: Address,
+    base_prog: Address,
+    quote_prog: Address,
+    vbase: Address,
+    vquote: Address,
+    window_secs: u64,
+    tick: u64,
+    lot: u64,
+    auction_id: u64,
+    window_end: i64,
+    reference: u64,
+    ref_at: i64,
+    max_age: u64,
+    band_bps: u64,
+}
+
+impl MarketView {
+    /// Day: the reference was updated no more than max_age ago.
+    fn is_day(&self, t: i64) -> bool {
+        self.ref_at > 0 && t >= self.ref_at && (t - self.ref_at) as u64 <= self.max_age
+    }
+}
+
