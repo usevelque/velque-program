@@ -12,6 +12,7 @@ use pinocchio::{
     sysvars::{clock::Clock, Sysvar},
     AccountView, Address, ProgramResult,
 };
+use pinocchio_system::instructions::CreateAccount;
 
 use clearing::{Orders, BUY, CAP, SELL};
 use state::*;
@@ -145,5 +146,40 @@ fn load_market(program_id: &Address, market: &AccountView) -> Result<MarketView,
 
 fn book_key(market: &Address, auction_id: u64, program_id: &Address) -> (Address, u8) {
     Address::find_program_address(&[SEED_BOOK, market.as_ref(), &auction_id.to_le_bytes()], program_id)
+}
+
+/// Create the book for window `id` if it does not exist yet. `payer` pays the rent.
+fn ensure_book(
+    program_id: &Address,
+    payer: &AccountView,
+    book: &AccountView,
+    market: &Address,
+    id: u64,
+    window_end: i64,
+) -> ProgramResult {
+    let (bk, bump) = book_key(market, id, program_id);
+    if book.address() != &bk {
+        return Err(VelqueError::BadPda.into());
+    }
+    if book.data_len() > 0 {
+        if !book.owned_by(program_id) {
+            return Err(VelqueError::BadAccount.into());
+        }
+        return Ok(());
+    }
+    let idb = id.to_le_bytes();
+    let bb = [bump];
+    let seeds = [Seed::from(SEED_BOOK), Seed::from(market.as_ref()), Seed::from(&idb), Seed::from(&bb)];
+    CreateAccount::with_minimum_balance(payer, book, BOOK_LEN as u64, program_id, None)?
+        .invoke_signed(&[Signer::from(&seeds)])?;
+    let mut bv = *book;
+    let mut d = bv.try_borrow_mut()?;
+    d[0] = BOOK_TAG;
+    d[b::BUMP] = bump;
+    put_addr(&mut d, b::MARKET, market);
+    put_u64(&mut d, b::AUCTION_ID, id);
+    put_i64(&mut d, b::WINDOW_END, window_end);
+    put_addr(&mut d, b::PAYER, payer.address());
+    Ok(())
 }
 

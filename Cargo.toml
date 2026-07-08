@@ -12,3 +12,4 @@ no-entrypoint = []
 
 [dependencies]
 pinocchio = { version = "0.11.2", features = ["cpi"] }
+pinocchio-system = "0.6.1"
