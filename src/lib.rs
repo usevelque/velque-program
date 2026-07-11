@@ -12,10 +12,15 @@ use pinocchio::{
     sysvars::{clock::Clock, Sysvar},
     AccountView, Address, ProgramResult,
 };
+use pinocchio_associated_token_account::instructions::CreateIdempotent;
 use pinocchio_system::instructions::CreateAccount;
+use pinocchio_token::instructions::TransferChecked;
 
 use clearing::{Orders, BUY, CAP, SELL};
 use state::*;
+
+pub const TOKEN: Address = Address::from_str_const("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+pub const TOKEN_2022: Address = Address::from_str_const("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
 
 pub const SEED_MARKET: &[u8] = b"market";
 pub const SEED_BOOK: &[u8] = b"book";
