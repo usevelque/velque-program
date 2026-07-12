@@ -92,6 +92,20 @@ fn is_token_program(a: &Address) -> bool {
     a == &TOKEN || a == &TOKEN_2022
 }
 
+/// Mint of a token account. The first 72 bytes are the same in SPL Token and
+/// Token-2022: mint, owner, amount; in 2022 extensions may follow further on.
+fn check_token_account(acc: &AccountView, mint: &Address) -> ProgramResult {
+    let owner_ok = acc.owned_by(&TOKEN) || acc.owned_by(&TOKEN_2022);
+    if !owner_ok || acc.data_len() < 165 {
+        return Err(VelqueError::BadAccount.into());
+    }
+    let d = acc.try_borrow()?;
+    if get_addr(&d, 0) != *mint {
+        return Err(VelqueError::BadAccount.into());
+    }
+    Ok(())
+}
+
 /// Market snapshot needed by the instructions.
 struct MarketView {
     bump: u8,
