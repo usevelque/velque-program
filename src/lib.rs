@@ -88,6 +88,10 @@ fn now() -> Result<i64, ProgramError> {
     Ok(Clock::get()?.unix_timestamp)
 }
 
+fn is_token_program(a: &Address) -> bool {
+    a == &TOKEN || a == &TOKEN_2022
+}
+
 /// Market snapshot needed by the instructions.
 struct MarketView {
     bump: u8,
