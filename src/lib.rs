@@ -167,6 +167,36 @@ fn load_market(program_id: &Address, market: &AccountView) -> Result<MarketView,
     })
 }
 
+/// One side of the market: vault, mint, token program and decimals.
+struct Leg<'a> {
+    vault: &'a AccountView,
+    mint: &'a AccountView,
+    prog: &'a Address,
+    decimals: u8,
+}
+
+/// Check that the passed accounts are the market's base or quote side.
+fn leg<'a>(
+    mv: &MarketView,
+    base: bool,
+    vault: &'a AccountView,
+    mint: &'a AccountView,
+    prog: &'a AccountView,
+) -> Result<Leg<'a>, ProgramError> {
+    let (v, mt, p, dec) = if base {
+        (&mv.vbase, &mv.base_mint, &mv.base_prog, mv.base_dec)
+    } else {
+        (&mv.vquote, &mv.quote_mint, &mv.quote_prog, mv.quote_dec)
+    };
+    if vault.address() != v || mint.address() != mt {
+        return Err(VelqueError::BadPda.into());
+    }
+    if prog.address() != p {
+        return Err(VelqueError::BadProgram.into());
+    }
+    Ok(Leg { vault, mint, prog: prog.address(), decimals: dec })
+}
+
 fn book_key(market: &Address, auction_id: u64, program_id: &Address) -> (Address, u8) {
     Address::find_program_address(&[SEED_BOOK, market.as_ref(), &auction_id.to_le_bytes()], program_id)
 }
