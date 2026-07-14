@@ -197,6 +197,26 @@ fn leg<'a>(
     Ok(Leg { vault, mint, prog: prog.address(), decimals: dec })
 }
 
+/// Transfer from the user into the vault: signed by the user.
+fn pay_in(leg: &Leg, from: &AccountView, owner: &AccountView, amount: u64) -> ProgramResult {
+    if amount == 0 {
+        return Ok(());
+    }
+    TransferChecked::<&AccountView>::new(from, leg.mint, leg.vault, owner, amount, leg.decimals)
+        .invoke_with_program(leg.prog)
+}
+
+/// Transfer out of the vault: signed by the market PDA.
+fn pay_out(leg: &Leg, to: &AccountView, market: &AccountView, mv: &MarketView, amount: u64) -> ProgramResult {
+    if amount == 0 {
+        return Ok(());
+    }
+    let bump = [mv.bump];
+    let seeds = [Seed::from(SEED_MARKET), Seed::from(mv.base_mint.as_ref()), Seed::from(&bump)];
+    TransferChecked::<&AccountView>::new(leg.vault, leg.mint, to, market, amount, leg.decimals)
+        .invoke_signed_with_program(&[Signer::from(&seeds)], leg.prog)
+}
+
 fn book_key(market: &Address, auction_id: u64, program_id: &Address) -> (Address, u8) {
     Address::find_program_address(&[SEED_BOOK, market.as_ref(), &auction_id.to_le_bytes()], program_id)
 }
