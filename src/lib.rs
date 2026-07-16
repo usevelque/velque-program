@@ -66,6 +66,7 @@ pub fn process_instruction(
 ) -> ProgramResult {
     let accounts: &[AccountView] = accounts;
     match data.split_first() {
+        Some((0, rest)) => init_market(program_id, accounts, rest),
         _ => Err(ProgramError::InvalidInstructionData),
     }
 }
@@ -253,6 +254,54 @@ fn ensure_book(
     put_u64(&mut d, b::AUCTION_ID, id);
     put_i64(&mut d, b::WINDOW_END, window_end);
     put_addr(&mut d, b::PAYER, payer.address());
+    Ok(())
+}
+
+// ================================================================ init_market
+
+/// Accounts:
+///  0 authority (oracle)            [signer, writable]
+///  1 market PDA ["market", base]   [writable]
+///  2 base_mint
+///  3 quote_mint
+///  4 vbase = ATA(market, base)     [writable]
+///  5 vquote = ATA(market, quote)   [writable]
+///  6 base token program
+///  7 quote token program
+///  8 Associated Token program
+///  9 System program
+///
+/// Data: window_secs, tick, lot, reference, max_age, band_bps (all u64).
+fn init_market(program_id: &Address, accounts: &[AccountView], data: &[u8]) -> ProgramResult {
+    let [authority, market, base_mint, quote_mint, vbase, vquote, base_prog, quote_prog, _ata, system, ..] = accounts else {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    };
+    if !authority.is_signer() {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    let window_secs = read_u64(data, 0)?;
+    let tick = read_u64(data, 8)?;
+    let lot = read_u64(data, 16)?;
+    let reference = read_u64(data, 24)?;
+    let max_age = read_u64(data, 32)?;
+    let band_bps = read_u64(data, 40)?;
+    if window_secs == 0 || tick == 0 || lot == 0 || reference % tick != 0 || max_age == 0 || band_bps == 0 || band_bps > 10_000 {
+        return Err(VelqueError::BadParams.into());
+    }
+    if !is_token_program(base_prog.address()) || !is_token_program(quote_prog.address()) {
+        return Err(VelqueError::BadProgram.into());
+    }
+    if !base_mint.owned_by(base_prog.address()) || !quote_mint.owned_by(quote_prog.address()) {
+        return Err(VelqueError::BadAccount.into());
+    }
+    let (base_dec, quote_dec) = {
+        let bd = base_mint.try_borrow()?;
+        let qd = quote_mint.try_borrow()?;
+        if bd.len() < 82 || qd.len() < 82 {
+            return Err(VelqueError::BadAccount.into());
+        }
+        (bd[44], qd[44])
+    };
     Ok(())
 }
 
