@@ -302,6 +302,17 @@ fn init_market(program_id: &Address, accounts: &[AccountView], data: &[u8]) -> P
         }
         (bd[44], qd[44])
     };
+
+    let bm = base_mint.address();
+    let (market_key, market_bump) = Address::find_program_address(&[SEED_MARKET, bm.as_ref()], program_id);
+    if market.address() != &market_key {
+        return Err(VelqueError::BadPda.into());
+    }
+    let mb = [market_bump];
+    let market_seeds = [Seed::from(SEED_MARKET), Seed::from(bm.as_ref()), Seed::from(&mb)];
+    CreateAccount::with_minimum_balance(authority, market, MARKET_LEN as u64, program_id, None)?
+        .invoke_signed(&[Signer::from(&market_seeds)])?;
+
     Ok(())
 }
 
