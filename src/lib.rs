@@ -313,6 +313,36 @@ fn init_market(program_id: &Address, accounts: &[AccountView], data: &[u8]) -> P
     CreateAccount::with_minimum_balance(authority, market, MARKET_LEN as u64, program_id, None)?
         .invoke_signed(&[Signer::from(&market_seeds)])?;
 
+    // vaults: the market's ATAs; the ATA program itself checks the address and the size for 2022 extensions
+    CreateIdempotent { funding_account: authority, account: vbase, wallet: market, mint: base_mint, system_program: system, token_program: base_prog }
+        .invoke()?;
+    CreateIdempotent { funding_account: authority, account: vquote, wallet: market, mint: quote_mint, system_program: system, token_program: quote_prog }
+        .invoke()?;
+
+    let t = now()?;
+    let mut mk = *market;
+    let mut d = mk.try_borrow_mut()?;
+    d[0] = MARKET_TAG;
+    d[m::BUMP] = market_bump;
+    d[m::BASE_DEC] = base_dec;
+    d[m::QUOTE_DEC] = quote_dec;
+    put_addr(&mut d, m::AUTHORITY, authority.address());
+    put_addr(&mut d, m::BASE_MINT, bm);
+    put_addr(&mut d, m::QUOTE_MINT, quote_mint.address());
+    put_addr(&mut d, m::BASE_PROG, base_prog.address());
+    put_addr(&mut d, m::QUOTE_PROG, quote_prog.address());
+    put_addr(&mut d, m::VBASE, vbase.address());
+    put_addr(&mut d, m::VQUOTE, vquote.address());
+    put_u64(&mut d, m::WINDOW_SECS, window_secs);
+    put_u64(&mut d, m::TICK, tick);
+    put_u64(&mut d, m::LOT, lot);
+    put_u64(&mut d, m::AUCTION_ID, 0);
+    put_i64(&mut d, m::WINDOW_START, t);
+    put_i64(&mut d, m::WINDOW_END, t + window_secs as i64);
+    put_u64(&mut d, m::REFERENCE, reference);
+    put_i64(&mut d, m::REF_AT, 0); // start in Dark: no reference has arrived yet
+    put_u64(&mut d, m::MAX_AGE, max_age);
+    put_u64(&mut d, m::BAND_BPS, band_bps);
     Ok(())
 }
 
