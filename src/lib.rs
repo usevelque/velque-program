@@ -67,6 +67,7 @@ pub fn process_instruction(
     let accounts: &[AccountView] = accounts;
     match data.split_first() {
         Some((0, rest)) => init_market(program_id, accounts, rest),
+        Some((1, rest)) => place(program_id, accounts, rest),
         _ => Err(ProgramError::InvalidInstructionData),
     }
 }
@@ -343,6 +344,69 @@ fn init_market(program_id: &Address, accounts: &[AccountView], data: &[u8]) -> P
     put_i64(&mut d, m::REF_AT, 0); // start in Dark: no reference has arrived yet
     put_u64(&mut d, m::MAX_AGE, max_age);
     put_u64(&mut d, m::BAND_BPS, band_bps);
+    Ok(())
+}
+
+// ================================================================ place (auction)
+
+/// Accounts:
+///  0 owner                          [signer, writable]
+///  1 market
+///  2 book PDA of the current window [writable]  created by the first order
+///  3 owner's account: base on sell, quote on buy [writable]
+///  4 vault of this side             [writable]
+///  5 mint of this side
+///  6 token program of this side
+///  7 System program
+fn place(program_id: &Address, accounts: &[AccountView], data: &[u8]) -> ProgramResult {
+    let [owner, market, book, src, vault, mint, prog, _system, ..] = accounts else {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    };
+    if !owner.is_signer() {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    let side = *data.first().ok_or(ProgramError::InvalidInstructionData)?;
+    let price = read_u64(data, 1)?;
+    let qty = read_u64(data, 9)?;
+    let tif = data.get(17).copied().unwrap_or(TIF_ONE);
+    let mv = load_market(program_id, market)?;
+    if (side != BUY && side != SELL) || tif > TIF_GTC || price == 0 || price % mv.tick != 0 || qty == 0 || qty % mv.lot != 0 {
+        return Err(VelqueError::BadParams.into());
+    }
+    let t = now()?;
+    if mv.is_day(t) {
+        return Err(VelqueError::SessionDay.into());
+    }
+    if t >= mv.window_end {
+        return Err(VelqueError::WindowClosed.into());
+    }
+    let lg = leg(&mv, side == SELL, vault, mint, prog)?;
+    check_token_account(src, mint.address())?;
+
+    let mk = market.address();
+    ensure_book(program_id, owner, book, mk, mv.auction_id, mv.window_end)?;
+    let amount = if side == SELL { qty } else { quote_for(price, qty, mv.base_dec, true).ok_or(VelqueError::Math)? };
+    pay_in(&lg, src, owner, amount)?;
+
+    let mut bv = *book;
+    let mut d = bv.try_borrow_mut()?;
+    if d[0] != BOOK_TAG || d[b::STATE] != 0 {
+        return Err(VelqueError::BadAccount.into());
+    }
+    let n = count(&d);
+    if n >= CAP {
+        return Err(VelqueError::BookFull.into());
+    }
+    let o = entry_off(n);
+    put_addr(&mut d, o + e::OWNER, owner.address());
+    put_u64(&mut d, o + e::PRICE, price);
+    put_u64(&mut d, o + e::QTY, qty);
+    put_u64(&mut d, o + e::FILLED, 0);
+    put_u64(&mut d, o + e::ESCROW, amount);
+    d[o + e::SIDE] = side;
+    d[o + e::STATUS] = LIVE;
+    d[o + e::TIF] = tif;
+    set_count(&mut d, n + 1);
     Ok(())
 }
 
