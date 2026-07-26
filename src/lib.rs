@@ -68,6 +68,7 @@ pub fn process_instruction(
     match data.split_first() {
         Some((0, rest)) => init_market(program_id, accounts, rest),
         Some((1, rest)) => place(program_id, accounts, rest),
+        Some((2, rest)) => cancel(program_id, accounts, rest),
         _ => Err(ProgramError::InvalidInstructionData),
     }
 }
@@ -408,5 +409,55 @@ fn place(program_id: &Address, accounts: &[AccountView], data: &[u8]) -> Program
     d[o + e::TIF] = tif;
     set_count(&mut d, n + 1);
     Ok(())
+}
+
+// ================================================================ cancel (auction)
+
+/// Accounts:
+///  0 owner          [signer]
+///  1 market
+///  2 book           [writable]
+///  3 refund account [writable]
+///  4 vault          [writable]
+///  5 mint
+///  6 token program
+fn cancel(program_id: &Address, accounts: &[AccountView], data: &[u8]) -> ProgramResult {
+    let [owner, market, book, dest, vault, mint, prog, ..] = accounts else {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    };
+    if !owner.is_signer() {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    let idx = read_u16(data, 0)? as usize;
+    let mv = load_market(program_id, market)?;
+    if now()? >= mv.window_end {
+        return Err(VelqueError::WindowClosed.into());
+    }
+    let mk = market.address();
+    let (bk, _) = book_key(mk, mv.auction_id, program_id);
+    if book.address() != &bk || !book.owned_by(program_id) {
+        return Err(VelqueError::BadPda.into());
+    }
+    let (side, amount) = {
+        let mut bv = *book;
+        let mut d = bv.try_borrow_mut()?;
+        if d[0] != BOOK_TAG || d[b::STATE] != 0 || idx >= count(&d) {
+            return Err(VelqueError::BadStatus.into());
+        }
+        let o = entry_off(idx);
+        if get_addr(&d, o + e::OWNER) != *owner.address() {
+            return Err(VelqueError::NotOwner.into());
+        }
+        if d[o + e::STATUS] != LIVE {
+            return Err(VelqueError::BadStatus.into());
+        }
+        d[o + e::STATUS] = CANCELLED;
+        let amount = get_u64(&d, o + e::ESCROW);
+        put_u64(&mut d, o + e::ESCROW, 0);
+        (d[o + e::SIDE], amount)
+    };
+    let lg = leg(&mv, side == SELL, vault, mint, prog)?;
+    check_token_account(dest, mint.address())?;
+    pay_out(&lg, dest, market, &mv, amount)
 }
 
