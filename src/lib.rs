@@ -461,3 +461,11 @@ fn cancel(program_id: &Address, accounts: &[AccountView], data: &[u8]) -> Progra
     pay_out(&lg, dest, market, &mv, amount)
 }
 
+// ================================================================ clear
+
+/// Cost of a buy fill, capped at the entry's escrow.
+fn buy_cost(price: u64, filled: u64, escrow: u64, decimals: u8) -> Result<u64, ProgramError> {
+    let c = quote_for(price, filled, decimals, true).ok_or(VelqueError::Math)?;
+    Ok(c.min(escrow))
+}
+
