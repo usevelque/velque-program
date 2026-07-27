@@ -469,3 +469,45 @@ fn buy_cost(price: u64, filled: u64, escrow: u64, decimals: u8) -> Result<u64, P
     Ok(c.min(escrow))
 }
 
+/// Price, fills, escrow. Returns the clearing price and the number of orders
+/// to carry over. The clearing arrays live in their own stack frame.
+#[inline(never)]
+fn settle_book(d: &mut [u8], mv: &MarketView, t: i64) -> Result<(u64, usize), ProgramError> {
+    let n = count(d);
+    let mut o = Orders::empty();
+    o.n = n;
+    for i in 0..n {
+        let off = entry_off(i);
+        o.price[i] = get_u64(d, off + e::PRICE);
+        o.qty[i] = get_u64(d, off + e::QTY);
+        o.side[i] = d[off + e::SIDE];
+        o.live[i] = d[off + e::STATUS] == LIVE;
+    }
+    let out = clearing::find_price(&o, mv.reference, mv.tick);
+    let mut fills = [0u64; CAP];
+    clearing::allocate(&o, out.price, out.volume, mv.lot, &mut fills);
+
+    let mut rolls = 0usize;
+    for i in 0..n {
+        let off = entry_off(i);
+        put_u64(d, off + e::FILLED, fills[i]);
+        d[off + e::ROLL] = 0;
+        if !o.live[i] || d[off + e::TIF] != TIF_GTC || fills[i] >= o.qty[i] {
+            continue;
+        }
+        let escrow = get_u64(d, off + e::ESCROW);
+        let keep = if o.side[i] == BUY { buy_cost(out.price, fills[i], escrow, mv.base_dec)? } else { fills[i] };
+        put_u64(d, off + e::ESCROW, keep);
+        put_u64(d, off + e::ROLL_ESCROW, escrow - keep);
+        d[off + e::ROLL] = 1;
+        rolls += 1;
+    }
+    d[b::STATE] = 1;
+    put_u64(d, b::CLEAR_PRICE, out.price);
+    put_u64(d, b::VOLUME, out.volume);
+    put_u64(d, b::IMBALANCE, out.imbalance);
+    put_u64(d, b::REFERENCE, mv.reference);
+    put_i64(d, b::CLEARED_AT, t);
+    Ok((out.price, rolls))
+}
+
