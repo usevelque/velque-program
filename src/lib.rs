@@ -511,3 +511,25 @@ fn settle_book(d: &mut [u8], mv: &MarketView, t: i64) -> Result<(u64, usize), Pr
     Ok((out.price, rolls))
 }
 
+/// Carry the flagged orders over into the next window's book (Dark).
+fn roll_into_book(src: &mut [u8], dst: &mut [u8]) {
+    let mut k = count(dst);
+    for i in 0..count(src) {
+        let so = entry_off(i);
+        if src[so + e::ROLL] != 1 {
+            continue;
+        }
+        let dof = entry_off(k);
+        dst[dof..dof + 32].copy_from_slice(&src[so..so + 32]);
+        put_u64(dst, dof + e::PRICE, get_u64(src, so + e::PRICE));
+        put_u64(dst, dof + e::QTY, get_u64(src, so + e::QTY) - get_u64(src, so + e::FILLED));
+        put_u64(dst, dof + e::FILLED, 0);
+        put_u64(dst, dof + e::ESCROW, get_u64(src, so + e::ROLL_ESCROW));
+        dst[dof + e::SIDE] = src[so + e::SIDE];
+        dst[dof + e::STATUS] = LIVE;
+        dst[dof + e::TIF] = TIF_GTC;
+        k += 1;
+    }
+    set_count(dst, k);
+}
+
