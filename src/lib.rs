@@ -69,6 +69,7 @@ pub fn process_instruction(
         Some((0, rest)) => init_market(program_id, accounts, rest),
         Some((1, rest)) => place(program_id, accounts, rest),
         Some((2, rest)) => cancel(program_id, accounts, rest),
+        Some((3, _)) => clear(program_id, accounts),
         _ => Err(ProgramError::InvalidInstructionData),
     }
 }
@@ -531,5 +532,60 @@ fn roll_into_book(src: &mut [u8], dst: &mut [u8]) {
         k += 1;
     }
     set_count(dst, k);
+}
+
+/// Accounts:
+///  0 cranker              [signer, writable]  anyone; pays the rent if needed
+///  1 market               [writable]
+///  2 current window book  [writable]
+///  3 next window book     [writable]
+///  4 day book             [writable]
+///  5 System program
+///
+/// Dark: only after the window ends, GTC remainders roll into the next window.
+/// Day: this is the opening cross. What has accumulated clears right away,
+/// without waiting for the window to end, GTC remainders rest in the day book.
+fn clear(program_id: &Address, accounts: &[AccountView]) -> ProgramResult {
+    let [cranker, market, book, next_book, day, _system, ..] = accounts else {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    };
+    if !cranker.is_signer() {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    let mv = load_market(program_id, market)?;
+    let t = now()?;
+    let mk = market.address();
+    let (bk, _) = book_key(mk, mv.auction_id, program_id);
+    if book.address() != &bk {
+        return Err(VelqueError::BadPda.into());
+    }
+    let exists = book.data_len() > 0;
+    if exists && !book.owned_by(program_id) {
+        return Err(VelqueError::BadAccount.into());
+    }
+    let has_orders = exists && {
+        let d = book.try_borrow()?;
+        (0..count(&d)).any(|i| d[entry_off(i) + e::STATUS] == LIVE)
+    };
+    let cross = mv.is_day(t) && has_orders;
+    if !cross && t < mv.window_end {
+        return Err(VelqueError::WindowOpen.into());
+    }
+    let next_id = mv.auction_id + 1;
+    let next_end = t + mv.window_secs as i64;
+
+    let mut last_price = 0u64;
+
+    let mut mkv = *market;
+    let mut d = mkv.try_borrow_mut()?;
+    let cleared = get_u64(&d, m::CLEARED);
+    put_u64(&mut d, m::AUCTION_ID, next_id);
+    put_i64(&mut d, m::WINDOW_START, t);
+    put_i64(&mut d, m::WINDOW_END, next_end);
+    if last_price > 0 {
+        put_u64(&mut d, m::LAST_PRICE, last_price);
+    }
+    put_u64(&mut d, m::CLEARED, cleared + 1);
+    Ok(())
 }
 
