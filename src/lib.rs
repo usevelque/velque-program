@@ -575,6 +575,26 @@ fn clear(program_id: &Address, accounts: &[AccountView]) -> ProgramResult {
     let next_end = t + mv.window_secs as i64;
 
     let mut last_price = 0u64;
+    if exists {
+        let rolls = {
+            let mut bv = *book;
+            let mut d = bv.try_borrow_mut()?;
+            if d[0] != BOOK_TAG || d[b::STATE] != 0 {
+                return Err(VelqueError::BadStatus.into());
+            }
+            let (price, rolls) = settle_book(&mut d, &mv, t)?;
+            last_price = price;
+            rolls
+        };
+        if rolls > 0 {
+                ensure_book(program_id, cranker, next_book, mk, next_id, next_end)?;
+                let mut sb = *book;
+                let mut src = sb.try_borrow_mut()?;
+                let mut nb = *next_book;
+                let mut dst = nb.try_borrow_mut()?;
+                roll_into_book(&mut src, &mut dst);
+        }
+    }
 
     let mut mkv = *market;
     let mut d = mkv.try_borrow_mut()?;
