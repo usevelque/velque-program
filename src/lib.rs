@@ -70,6 +70,7 @@ pub fn process_instruction(
         Some((1, rest)) => place(program_id, accounts, rest),
         Some((2, rest)) => cancel(program_id, accounts, rest),
         Some((3, _)) => clear(program_id, accounts),
+        Some((4, rest)) => claim(program_id, accounts, rest),
         _ => Err(ProgramError::InvalidInstructionData),
     }
 }
@@ -607,5 +608,77 @@ fn clear(program_id: &Address, accounts: &[AccountView]) -> ProgramResult {
     }
     put_u64(&mut d, m::CLEARED, cleared + 1);
     Ok(())
+}
+
+// ================================================================ claim (auction)
+
+/// Accounts:
+///  0 owner                 [signer]
+///  1 market
+///  2 cleared window book   [writable]
+///  3 owner's base account  [writable]
+///  4 owner's quote account [writable]
+///  5 vbase                 [writable]
+///  6 vquote                [writable]
+///  7 base_mint
+///  8 quote_mint
+///  9 base program
+/// 10 quote program
+fn claim(program_id: &Address, accounts: &[AccountView], data: &[u8]) -> ProgramResult {
+    let [owner, market, book, base_dest, quote_dest, vbase, vquote, base_mint, quote_mint, base_prog, quote_prog, ..] = accounts else {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    };
+    if !owner.is_signer() {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    let idx = read_u16(data, 0)? as usize;
+    let mv = load_market(program_id, market)?;
+    let bl = leg(&mv, true, vbase, base_mint, base_prog)?;
+    let ql = leg(&mv, false, vquote, quote_mint, quote_prog)?;
+    check_token_account(base_dest, &mv.base_mint)?;
+    check_token_account(quote_dest, &mv.quote_mint)?;
+    if !book.owned_by(program_id) {
+        return Err(VelqueError::BadAccount.into());
+    }
+    let mk = market.address();
+    let (base_out, quote_out) = {
+        let mut bv = *book;
+        let mut d = bv.try_borrow_mut()?;
+        if d.len() != BOOK_LEN || d[0] != BOOK_TAG || get_addr(&d, b::MARKET) != *mk {
+            return Err(VelqueError::BadAccount.into());
+        }
+        let id = get_u64(&d, b::AUCTION_ID);
+        let expect = Address::derive_address(&[SEED_BOOK, mk.as_ref(), &id.to_le_bytes()], Some(d[b::BUMP]), program_id);
+        if book.address() != &expect {
+            return Err(VelqueError::BadPda.into());
+        }
+        if d[b::STATE] != 1 {
+            return Err(VelqueError::NotCleared.into());
+        }
+        if idx >= count(&d) {
+            return Err(VelqueError::BadStatus.into());
+        }
+        let o = entry_off(idx);
+        if get_addr(&d, o + e::OWNER) != *owner.address() {
+            return Err(VelqueError::NotOwner.into());
+        }
+        if d[o + e::STATUS] != LIVE {
+            return Err(VelqueError::BadStatus.into());
+        }
+        d[o + e::STATUS] = CLAIMED;
+        let clear_price = get_u64(&d, b::CLEAR_PRICE);
+        let filled = get_u64(&d, o + e::FILLED);
+        let escrow = get_u64(&d, o + e::ESCROW);
+        put_u64(&mut d, o + e::ESCROW, 0);
+        if d[o + e::SIDE] == BUY {
+            let cost = buy_cost(clear_price, filled, escrow, mv.base_dec)?;
+            (filled, escrow - cost)
+        } else {
+            let proceeds = quote_for(clear_price, filled, mv.base_dec, false).ok_or(VelqueError::Math)?;
+            (escrow.checked_sub(filled).ok_or(VelqueError::Math)?, proceeds)
+        }
+    };
+    pay_out(&bl, base_dest, market, &mv, base_out)?;
+    pay_out(&ql, quote_dest, market, &mv, quote_out)
 }
 
