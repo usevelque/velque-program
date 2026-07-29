@@ -71,6 +71,7 @@ pub fn process_instruction(
         Some((2, rest)) => cancel(program_id, accounts, rest),
         Some((3, _)) => clear(program_id, accounts),
         Some((4, rest)) => claim(program_id, accounts, rest),
+        Some((5, rest)) => set_reference(program_id, accounts, rest),
         _ => Err(ProgramError::InvalidInstructionData),
     }
 }
@@ -680,5 +681,29 @@ fn claim(program_id: &Address, accounts: &[AccountView], data: &[u8]) -> Program
     };
     pay_out(&bl, base_dest, market, &mv, base_out)?;
     pay_out(&ql, quote_dest, market, &mv, quote_out)
+}
+
+// ================================================================ set_reference
+
+/// Accounts: 0 authority [signer], 1 market [writable]. Data: price u64.
+/// An update makes the reference fresh: the market switches to Day.
+fn set_reference(program_id: &Address, accounts: &[AccountView], data: &[u8]) -> ProgramResult {
+    let [authority, market, ..] = accounts else {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    };
+    let price = read_u64(data, 0)?;
+    let mv = load_market(program_id, market)?;
+    if !authority.is_signer() || authority.address() != &mv.authority {
+        return Err(VelqueError::Unauthorized.into());
+    }
+    if price == 0 || price % mv.tick != 0 {
+        return Err(VelqueError::BadParams.into());
+    }
+    let t = now()?;
+    let mut mkv = *market;
+    let mut d = mkv.try_borrow_mut()?;
+    put_u64(&mut d, m::REFERENCE, price);
+    put_i64(&mut d, m::REF_AT, t);
+    Ok(())
 }
 
