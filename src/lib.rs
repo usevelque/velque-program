@@ -72,6 +72,7 @@ pub fn process_instruction(
         Some((3, _)) => clear(program_id, accounts),
         Some((4, rest)) => claim(program_id, accounts, rest),
         Some((5, rest)) => set_reference(program_id, accounts, rest),
+        Some((6, _)) => close_book(program_id, accounts),
         _ => Err(ProgramError::InvalidInstructionData),
     }
 }
@@ -705,5 +706,45 @@ fn set_reference(program_id: &Address, accounts: &[AccountView], data: &[u8]) ->
     put_u64(&mut d, m::REFERENCE, price);
     put_i64(&mut d, m::REF_AT, t);
     Ok(())
+}
+
+// ================================================================ close_book
+
+/// Close a cleared window book that owes nothing to anyone.
+/// The rent goes to whoever paid for the book. Anyone can call this.
+///
+/// Accounts: 0 book [writable], 1 payer from the book header [writable]
+fn close_book(program_id: &Address, accounts: &[AccountView]) -> ProgramResult {
+    let [book, payer, ..] = accounts else {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    };
+    if !book.owned_by(program_id) {
+        return Err(VelqueError::BadAccount.into());
+    }
+    {
+        let d = book.try_borrow()?;
+        if d.len() != BOOK_LEN || d[0] != BOOK_TAG || d[b::STATE] != 1 {
+            return Err(VelqueError::NotCleared.into());
+        }
+        if get_addr(&d, b::PAYER) != *payer.address() {
+            return Err(VelqueError::BadAccount.into());
+        }
+        for i in 0..count(&d) {
+            let o = entry_off(i);
+            let settled = match d[o + e::STATUS] {
+                CANCELLED | CLAIMED => true,
+                LIVE => get_u64(&d, o + e::FILLED) == 0 && get_u64(&d, o + e::ESCROW) == 0,
+                _ => true,
+            };
+            if !settled {
+                return Err(VelqueError::BadStatus.into());
+            }
+        }
+    }
+    let mut bv = *book;
+    let mut pv = *payer;
+    pv.set_lamports(pv.lamports().checked_add(bv.lamports()).ok_or(VelqueError::Math)?);
+    bv.set_lamports(0);
+    bv.close()
 }
 
