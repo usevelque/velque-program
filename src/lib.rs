@@ -7,6 +7,18 @@
 //! Dark begins: orders accumulate in windows and clear at a single price. The
 //! first clearing after the reference turns fresh again is the opening cross.
 //!
+//! Instructions (first data byte):
+//!   0  init_market(window, tick, lot, reference, max_age, band_bps)
+//!   1  place(side, price, qty, tif)   auction order (Dark only)
+//!   2  cancel(index)                  cancel an order in the current window
+//!   3  clear                          clear the window; in Day this is the opening cross
+//!   4  claim(index)                   claim the fill and the change for a window
+//!   5  set_reference(price)           reference price (authority = oracle)
+//!   6  close_book                     close a settled window book
+//!
+//! Both token programs are supported, SPL Token and Token-2022 (the real
+//! xStocks are issued on Token-2022). The vaults are the market's ATAs, and
+//! transfers go through transfer_checked of the program that owns the mint.
 
 #![no_std]
 
