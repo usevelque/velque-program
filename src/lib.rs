@@ -1,5 +1,12 @@
 //! Velque: an order book for tokenized stocks on Solana, built around the
 //! hours when Nasdaq is closed.
+//!
+//! The session is defined by how fresh the reference price is. While the
+//! oracle keeps updating it (Nasdaq is open), it is Day: a continuous book,
+//! price-time priority, a band around the reference. When the updates stop,
+//! Dark begins: orders accumulate in windows and clear at a single price. The
+//! first clearing after the reference turns fresh again is the opening cross.
+//!
 
 #![no_std]
 
