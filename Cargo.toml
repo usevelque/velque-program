@@ -15,3 +15,10 @@ pinocchio = { version = "0.11.2", features = ["cpi"] }
 pinocchio-token = "0.7.0"
 pinocchio-system = "0.6.1"
 pinocchio-associated-token-account = "0.4.0"
+
+[profile.release]
+overflow-checks = true
+lto = "fat"
+codegen-units = 1
+opt-level = "s"
+strip = true
