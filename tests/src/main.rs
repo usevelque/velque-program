@@ -1,6 +1,28 @@
 //! Velque checks.
+//!
+//!   cargo run --release        (VELQUE_SO=path to velque.so)
+//!
+//! 1. Pure clearing: the example from docs.html#example and edge cases.
+//! 2. End-to-end run of the built program in LiteSVM: a market on Token-2022,
+//!    night auctions, carry-over, the opening cross, the day book with its
+//!    band, the day close, balances reconciled to the unit.
+//!
+//! Each check prints PASS or fails with an explanation.
 
+use litesvm::LiteSVM;
+use solana_account::Account;
+use solana_clock::Clock;
+use solana_instruction::{AccountMeta, Instruction};
+use solana_keypair::Keypair;
+use solana_pubkey::Pubkey;
+use solana_signer::Signer;
+use solana_transaction::Transaction;
 use velque::clearing::{self, Orders, BUY, SELL};
+
+const TOKEN: Pubkey = Pubkey::from_str_const("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+const TOKEN_2022: Pubkey = Pubkey::from_str_const("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
+const ATA: Pubkey = Pubkey::from_str_const("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
+const SYSTEM: Pubkey = Pubkey::from_str_const("11111111111111111111111111111111");
 
 /// 6 decimals for both tokens: 1 share = 1_000_000, 1 USDC = 1_000_000.
 const U: u64 = 1_000_000;
