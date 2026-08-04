@@ -1,2 +1,6 @@
 target/
 *.so
+*-keypair.json
+keys/
+.env*
+node_modules/
