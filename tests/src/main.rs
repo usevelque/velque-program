@@ -111,6 +111,53 @@ fn clearing_tests() {
     pass("lot remainders go in order, total is exact");
 }
 
+// ------------------------------------------------------------ 2. LiteSVM
+
+const M_AUCTION: usize = 256;
+const M_WINDOW_END: usize = 272;
+const M_REF: usize = 280;
+const M_LAST: usize = 288;
+const M_REF_AT: usize = 304;
+
+const DAY_HEADER: usize = 72;
+const DAY_ENTRY: usize = 80;
+
+fn mint_data(authority: &Pubkey, decimals: u8) -> Vec<u8> {
+    let mut d = vec![0u8; 82];
+    d[0..4].copy_from_slice(&1u32.to_le_bytes());
+    d[4..36].copy_from_slice(authority.as_ref());
+    d[44] = decimals;
+    d[45] = 1;
+    d
+}
+
+fn token_data(mint: &Pubkey, owner: &Pubkey, amount: u64) -> Vec<u8> {
+    let mut d = vec![0u8; 165];
+    d[0..32].copy_from_slice(mint.as_ref());
+    d[32..64].copy_from_slice(owner.as_ref());
+    d[64..72].copy_from_slice(&amount.to_le_bytes());
+    d[108] = 1; // initialized
+    d
+}
+
+fn set_owned(svm: &mut LiteSVM, key: &Pubkey, data: Vec<u8>, owner: Pubkey) {
+    let lamports = svm.minimum_balance_for_rent_exemption(data.len());
+    svm.set_account(*key, Account { lamports, data, owner, executable: false, rent_epoch: 0 }).unwrap();
+}
+
+fn amount(svm: &LiteSVM, key: &Pubkey) -> u64 {
+    let a = svm.get_account(key).unwrap();
+    u64::from_le_bytes(a.data[64..72].try_into().unwrap())
+}
+
+fn u64_at(d: &[u8], o: usize) -> u64 {
+    u64::from_le_bytes(d[o..o + 8].try_into().unwrap())
+}
+
+fn ata(wallet: &Pubkey, prog: &Pubkey, mint: &Pubkey) -> Pubkey {
+    Pubkey::find_program_address(&[wallet.as_ref(), prog.as_ref(), mint.as_ref()], &ATA).0
+}
+
 
 fn main() {
     clearing_tests();
