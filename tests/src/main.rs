@@ -158,6 +158,23 @@ fn ata(wallet: &Pubkey, prog: &Pubkey, mint: &Pubkey) -> Pubkey {
     Pubkey::find_program_address(&[wallet.as_ref(), prog.as_ref(), mint.as_ref()], &ATA).0
 }
 
+struct Trader {
+    kp: Keypair,
+    base: Pubkey,
+    quote: Pubkey,
+}
+
+struct Env {
+    svm: LiteSVM,
+    pid: Pubkey,
+    base_mint: Pubkey,
+    quote_mint: Pubkey,
+    market: Pubkey,
+    vbase: Pubkey,
+    vquote: Pubkey,
+    day: Pubkey,
+}
+
 
 fn main() {
     clearing_tests();
