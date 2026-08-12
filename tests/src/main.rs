@@ -175,6 +175,49 @@ struct Env {
     day: Pubkey,
 }
 
+impl Env {
+    fn send(&mut self, ix: Instruction, signer: &Keypair) -> Result<u64, String> {
+        self.svm.expire_blockhash();
+        let tx = Transaction::new_signed_with_payer(&[ix], Some(&signer.pubkey()), &[signer], self.svm.latest_blockhash());
+        match self.svm.send_transaction(tx) {
+            Ok(m) => Ok(m.compute_units_consumed),
+            Err(e) => Err(format!("{:?}\n{}", e.err, e.meta.logs.join("\n"))),
+        }
+    }
+    fn book(&self, id: u64) -> Pubkey {
+        Pubkey::find_program_address(&[b"book", self.market.as_ref(), &id.to_le_bytes()], &self.pid).0
+    }
+    fn trader(&mut self, base: u64, quote: u64) -> Trader {
+        let kp = Keypair::new();
+        self.svm.airdrop(&kp.pubkey(), 1_000_000_000).unwrap();
+        let (b, q) = (Pubkey::new_unique(), Pubkey::new_unique());
+        let bm = self.base_mint;
+        let qm = self.quote_mint;
+        set_owned(&mut self.svm, &b, token_data(&bm, &kp.pubkey(), base), TOKEN_2022);
+        set_owned(&mut self.svm, &q, token_data(&qm, &kp.pubkey(), quote), TOKEN);
+        Trader { kp, base: b, quote: q }
+    }
+    /// (account, vault, mint, program) for a side: base for a sell, quote for a buy
+    fn side_accounts(&self, t: &Trader, side: u8) -> [AccountMeta; 4] {
+        if side == SELL {
+            [AccountMeta::new(t.base, false), AccountMeta::new(self.vbase, false), AccountMeta::new_readonly(self.base_mint, false), AccountMeta::new_readonly(TOKEN_2022, false)]
+        } else {
+            [AccountMeta::new(t.quote, false), AccountMeta::new(self.vquote, false), AccountMeta::new_readonly(self.quote_mint, false), AccountMeta::new_readonly(TOKEN, false)]
+        }
+    }
+    /// tail of 8 accounts for instructions that touch both sides
+    fn both_legs(&self, t: &Trader) -> Vec<AccountMeta> {
+        vec![
+            AccountMeta::new(t.base, false),
+            AccountMeta::new(t.quote, false),
+            AccountMeta::new(self.vbase, false),
+            AccountMeta::new(self.vquote, false),
+            AccountMeta::new_readonly(self.base_mint, false),
+            AccountMeta::new_readonly(self.quote_mint, false),
+            AccountMeta::new_readonly(TOKEN_2022, false),
+            AccountMeta::new_readonly(TOKEN, false),
+        ]
+    }
 
 fn main() {
     clearing_tests();
