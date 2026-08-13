@@ -218,6 +218,36 @@ impl Env {
             AccountMeta::new_readonly(TOKEN, false),
         ]
     }
+    fn place(&mut self, t: &Trader, side: u8, price: u64, qty: u64) -> Result<u64, String> {
+        self.place_tif(t, side, price, qty, 0)
+    }
+    fn place_tif(&mut self, t: &Trader, side: u8, price: u64, qty: u64, tif: u8) -> Result<u64, String> {
+        let id = self.market_u64(M_AUCTION);
+        let mut data = vec![1u8, side];
+        data.extend_from_slice(&price.to_le_bytes());
+        data.extend_from_slice(&qty.to_le_bytes());
+        data.push(tif);
+        let mut accounts = vec![
+            AccountMeta::new(t.kp.pubkey(), true),
+            AccountMeta::new_readonly(self.market, false),
+            AccountMeta::new(self.book(id), false),
+        ];
+        accounts.extend(self.side_accounts(t, side));
+        accounts.push(AccountMeta::new_readonly(SYSTEM, false));
+        self.send(Instruction { program_id: self.pid, accounts, data }, &t.kp)
+    }
+    fn cancel(&mut self, t: &Trader, idx: u16, side: u8) -> Result<u64, String> {
+        let id = self.market_u64(M_AUCTION);
+        let mut data = vec![2u8];
+        data.extend_from_slice(&idx.to_le_bytes());
+        let mut accounts = vec![
+            AccountMeta::new_readonly(t.kp.pubkey(), true),
+            AccountMeta::new_readonly(self.market, false),
+            AccountMeta::new(self.book(id), false),
+        ];
+        accounts.extend(self.side_accounts(t, side));
+        self.send(Instruction { program_id: self.pid, accounts, data }, &t.kp)
+    }
 
 fn main() {
     clearing_tests();
