@@ -248,6 +248,65 @@ impl Env {
         accounts.extend(self.side_accounts(t, side));
         self.send(Instruction { program_id: self.pid, accounts, data }, &t.kp)
     }
+    fn clear(&mut self, cranker: &Keypair) -> Result<u64, String> {
+        let id = self.market_u64(M_AUCTION);
+        let ix = Instruction {
+            program_id: self.pid,
+            accounts: vec![
+                AccountMeta::new(cranker.pubkey(), true),
+                AccountMeta::new(self.market, false),
+                AccountMeta::new(self.book(id), false),
+                AccountMeta::new(self.book(id + 1), false),
+                AccountMeta::new(self.day, false),
+                AccountMeta::new_readonly(SYSTEM, false),
+            ],
+            data: vec![3u8],
+        };
+        self.send(ix, cranker)
+    }
+    fn claim(&mut self, t: &Trader, book: Pubkey, idx: u16) -> Result<u64, String> {
+        let mut data = vec![4u8];
+        data.extend_from_slice(&idx.to_le_bytes());
+        let mut accounts = vec![
+            AccountMeta::new_readonly(t.kp.pubkey(), true),
+            AccountMeta::new_readonly(self.market, false),
+            AccountMeta::new(book, false),
+        ];
+        accounts.extend(self.both_legs(t));
+        self.send(Instruction { program_id: self.pid, accounts, data }, &t.kp)
+    }
+    fn set_reference(&mut self, signer: &Keypair, price: u64) -> Result<u64, String> {
+        let mut data = vec![5u8];
+        data.extend_from_slice(&price.to_le_bytes());
+        let ix = Instruction {
+            program_id: self.pid,
+            accounts: vec![AccountMeta::new_readonly(signer.pubkey(), true), AccountMeta::new(self.market, false)],
+            data,
+        };
+        self.send(ix, signer)
+    }
+    fn close_book(&mut self, book: Pubkey, payer: Pubkey, signer: &Keypair) -> Result<u64, String> {
+        let ix = Instruction {
+            program_id: self.pid,
+            accounts: vec![AccountMeta::new(book, false), AccountMeta::new(payer, false)],
+            data: vec![6u8],
+        };
+        self.send(ix, signer)
+    }
+    fn market_u64(&self, off: usize) -> u64 {
+        u64_at(&self.svm.get_account(&self.market).unwrap().data, off)
+    }
+    fn warp(&mut self, secs: i64) {
+        let mut c: Clock = self.svm.get_sysvar();
+        c.unix_timestamp += secs;
+        c.slot += 1;
+        self.svm.set_sysvar(&c);
+    }
+    fn vaults(&self) -> (u64, u64) {
+        (amount(&self.svm, &self.vbase), amount(&self.svm, &self.vquote))
+    }
+}
+
 
 fn main() {
     clearing_tests();
