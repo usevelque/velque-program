@@ -307,8 +307,64 @@ impl Env {
     }
 }
 
+fn expect_err(r: Result<u64, String>, code: u32, what: &str) {
+    let e = r.expect_err(what);
+    assert!(e.contains(&format!("Custom({code})")), "{what}: expected Custom({code}), got {e}");
+}
+
+fn svm_tests(so: &str) {
+    let pid = Pubkey::new_unique();
+    let mut svm = LiteSVM::new();
+    svm.add_program_from_file(pid, so).unwrap();
+
+    let admin = Keypair::new();
+    svm.airdrop(&admin.pubkey(), 10_000_000_000).unwrap();
+    // the stock is on Token-2022, like real xStocks; USDC is on plain SPL Token
+    let (base_mint, quote_mint) = (Pubkey::new_unique(), Pubkey::new_unique());
+    set_owned(&mut svm, &base_mint, mint_data(&admin.pubkey(), 6), TOKEN_2022);
+    set_owned(&mut svm, &quote_mint, mint_data(&admin.pubkey(), 6), TOKEN);
+    let market = Pubkey::find_program_address(&[b"market", base_mint.as_ref()], &pid).0;
+    let vbase = ata(&market, &TOKEN_2022, &base_mint);
+    let vquote = ata(&market, &TOKEN, &quote_mint);
+    let day = Pubkey::find_program_address(&[b"day", market.as_ref()], &pid).0;
+    let mut env = Env { svm, pid, base_mint, quote_mint, market, vbase, vquote, day };
+
+    // market: 60 s window, $0.01 tick, 0.001 lot, reference 180.70,
+    // reference fresh for 300 s, day book band 5%, minimum order $10
+    let mut data = vec![0u8];
+    for v in [60u64, TICK, LOT, usd(18070), 300, 500, 10 * U] {
+        data.extend_from_slice(&v.to_le_bytes());
+    }
+    let ix = Instruction {
+        program_id: pid,
+        accounts: vec![
+            AccountMeta::new(admin.pubkey(), true),
+            AccountMeta::new(market, false),
+            AccountMeta::new_readonly(base_mint, false),
+            AccountMeta::new_readonly(quote_mint, false),
+            AccountMeta::new(vbase, false),
+            AccountMeta::new(vquote, false),
+            AccountMeta::new_readonly(TOKEN_2022, false),
+            AccountMeta::new_readonly(TOKEN, false),
+            AccountMeta::new_readonly(ATA, false),
+            AccountMeta::new_readonly(SYSTEM, false),
+        ],
+        data,
+    };
+    env.send(ix, &admin).expect("init_market");
+    assert_eq!(env.market_u64(M_REF), usd(18070));
+    assert_eq!(env.market_u64(M_REF_AT), 0, "starts in Dark");
+    assert_eq!(env.svm.get_account(&vbase).unwrap().owner, TOKEN_2022, "stock vault is on Token-2022");
+    assert_eq!(env.svm.get_account(&vquote).unwrap().owner, TOKEN);
+    pass("init_market: Token-2022 stock, SPL USDC, both vaults are market ATAs");
+
+
+    println!("max CU for place: {max_cu}");
+}
 
 fn main() {
     clearing_tests();
+    let so = std::env::var("VELQUE_SO").unwrap_or_else(|_| "../target/deploy/velque.so".to_string());
+    svm_tests(&so);
     println!("ALL PASS");
 }
