@@ -377,6 +377,18 @@ fn svm_tests(so: &str) {
     assert_eq!(amount(&env.svm, &env.vbase), 350 * U);
     pass("place: 6 orders from the docs example, funds in escrow");
 
+    env.place(&quitter, BUY, usd(18100), 10 * U).expect("quitter buy");
+    env.cancel(&quitter, 6, BUY).expect("cancel");
+    assert_eq!(amount(&env.svm, &quitter.quote), 100_000 * U);
+    assert!(env.cancel(&quitter, 6, BUY).is_err(), "double cancel");
+    assert!(env.cancel(&buyers[1], 0, BUY).is_err(), "someone else's order");
+    pass("cancel: full refund, no double cancel, only the owner");
+
+    let cranker = Keypair::new();
+    env.svm.airdrop(&cranker.pubkey(), 1_000_000_000).unwrap();
+    expect_err(env.clear(&cranker), 5, "clear on an open window");
+    pass("clear before the window ends is rejected");
+
     println!("max CU for place: {max_cu}");
 }
 
