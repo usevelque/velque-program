@@ -358,6 +358,24 @@ fn svm_tests(so: &str) {
     assert_eq!(env.svm.get_account(&vquote).unwrap().owner, TOKEN);
     pass("init_market: Token-2022 stock, SPL USDC, both vaults are market ATAs");
 
+    // ---------------------------------------------------------------- Dark
+
+    let bids = [(18120u64, 100u64), (18090, 50), (18050, 200)];
+    let asks = [(18040u64, 80u64), (18080, 120), (18130, 150)];
+    let buyers: Vec<Trader> = bids.iter().map(|_| env.trader(0, 100_000 * U)).collect();
+    let sellers: Vec<Trader> = asks.iter().map(|_| env.trader(1_000 * U, 0)).collect();
+    let quitter = env.trader(0, 100_000 * U);
+
+    let mut max_cu = 0u64;
+    for (t, (p, q)) in buyers.iter().zip(bids) {
+        max_cu = max_cu.max(env.place(t, BUY, usd(p), q * U).expect("buy"));
+    }
+    for (t, (p, q)) in sellers.iter().zip(asks) {
+        max_cu = max_cu.max(env.place(t, SELL, usd(p), q * U).expect("sell"));
+    }
+    assert_eq!(amount(&env.svm, &buyers[0].quote), 100_000 * U - 18_120 * U);
+    assert_eq!(amount(&env.svm, &env.vbase), 350 * U);
+    pass("place: 6 orders from the docs example, funds in escrow");
 
     println!("max CU for place: {max_cu}");
 }
