@@ -444,6 +444,24 @@ fn svm_tests(so: &str) {
     assert_eq!(d2[128 + 66], 1, "a carried-over order stays GTC");
     pass("rollover: GTC remainder moves to the next window with exact escrow");
 
+    env.place(&s2, SELL, usd(17900), 60 * U).expect("s2");
+    env.warp(61);
+    env.clear(&cranker).expect("clear 2");
+    let d2 = env.svm.get_account(&b2).unwrap().data;
+    assert_eq!(u64_at(&d2, 56), usd(18000));
+    assert_eq!(u64_at(&d2, 128 + 48), 60 * U);
+    assert!(env.svm.get_account(&env.book(3)).map(|a| a.data.is_empty()).unwrap_or(true), "nothing to carry over, book 3 is not created");
+    env.claim(&g, b1, 0).expect("g claim 1");
+    env.claim(&g, b2, 0).expect("g claim 2");
+    env.claim(&s1, b1, 1).expect("s1 claim");
+    env.claim(&s2, b2, 1).expect("s2 claim");
+    assert_eq!(amount(&env.svm, &g.base), 100 * U);
+    assert_eq!(amount(&env.svm, &g.quote), 100_000 * U - 18_000 * U, "exactly 18,000 for 100 shares");
+    assert_eq!(amount(&env.svm, &s1.quote), 7_200 * U);
+    assert_eq!(amount(&env.svm, &s2.quote), 10_800 * U);
+    assert_eq!(env.vaults(), (0, 0));
+    pass("rollover: fills across two windows settle to the unit, vaults at zero");
+
     println!("max CU for place: {max_cu}");
 }
 
