@@ -389,6 +389,40 @@ fn svm_tests(so: &str) {
     expect_err(env.clear(&cranker), 5, "clear on an open window");
     pass("clear before the window ends is rejected");
 
+    env.warp(61);
+    assert!(env.place(&buyers[0], BUY, usd(18100), U).is_err(), "order into a closed window");
+    let book0 = env.book(0);
+    let cu = env.clear(&cranker).expect("clear");
+    let bd = env.svm.get_account(&book0).unwrap().data;
+    assert_eq!(bd[2], 1, "book cleared");
+    assert_eq!(u64_at(&bd, 56), usd(18080), "clearing price");
+    assert_eq!(u64_at(&bd, 64), 150 * U, "volume");
+    assert_eq!(env.market_u64(M_AUCTION), 1, "next window is open");
+    assert_eq!(env.market_u64(M_LAST), usd(18080));
+    pass(&format!("clear: 180.80 for 150 shares, {cu} CU"));
+
+    for (i, t) in buyers.iter().enumerate() {
+        env.claim(t, book0, i as u16).expect("claim buy");
+    }
+    for (i, t) in sellers.iter().enumerate() {
+        env.claim(t, book0, (i + 3) as u16).expect("claim sell");
+    }
+    assert!(env.claim(&buyers[0], book0, 0).is_err(), "double claim");
+    let q0 = 100_000 * U;
+    assert_eq!(amount(&env.svm, &buyers[0].base), 100 * U);
+    assert_eq!(amount(&env.svm, &buyers[0].quote), q0 - 18_080 * U, "pays 180.80, not 181.20");
+    assert_eq!(amount(&env.svm, &buyers[1].base), 50 * U);
+    assert_eq!(amount(&env.svm, &buyers[1].quote), q0 - 9_040 * U);
+    assert_eq!(amount(&env.svm, &buyers[2].base), 0);
+    assert_eq!(amount(&env.svm, &buyers[2].quote), q0, "not filled, funds returned");
+    assert_eq!(amount(&env.svm, &sellers[0].quote), 80 * 18_080 * U / 100);
+    assert_eq!(amount(&env.svm, &sellers[0].base), 920 * U);
+    assert_eq!(amount(&env.svm, &sellers[1].quote), 70 * 18_080 * U / 100);
+    assert_eq!(amount(&env.svm, &sellers[1].base), 1_000 * U - 70 * U);
+    assert_eq!(amount(&env.svm, &sellers[2].base), 1_000 * U);
+    assert_eq!(env.vaults(), (0, 0), "both vaults are empty");
+    pass("claim: every balance matches the docs, both vaults end at zero");
+
     println!("max CU for place: {max_cu}");
 }
 
