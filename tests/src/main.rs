@@ -423,6 +423,27 @@ fn svm_tests(so: &str) {
     assert_eq!(env.vaults(), (0, 0), "both vaults are empty");
     pass("claim: every balance matches the docs, both vaults end at zero");
 
+    // carry-over: a GTC buy of 100 @ 180.00 fills 40, the remaining 60 rolls into window 2
+    let g = env.trader(0, 100_000 * U);
+    let s1 = env.trader(1_000 * U, 0);
+    let s2 = env.trader(1_000 * U, 0);
+    env.place_tif(&g, BUY, usd(18000), 100 * U, 1).expect("gtc buy");
+    env.place(&s1, SELL, usd(17950), 40 * U).expect("s1");
+    env.warp(61);
+    env.clear(&cranker).expect("clear 1");
+    let b1 = env.book(1);
+    let b2 = env.book(2);
+    let d1 = env.svm.get_account(&b1).unwrap().data;
+    assert_eq!(u64_at(&d1, 56), usd(18000), "window 1 at 180.00");
+    assert_eq!(u64_at(&d1, 128 + 48), 40 * U, "filled 40");
+    assert_eq!(u64_at(&d1, 128 + 56), 7_200 * U, "the old entry keeps escrow for exactly 40 shares");
+    let d2 = env.svm.get_account(&b2).unwrap().data;
+    assert_eq!(u16::from_le_bytes([d2[4], d2[5]]), 1, "window 2 holds one carried-over order");
+    assert_eq!(u64_at(&d2, 128 + 40), 60 * U, "remainder 60");
+    assert_eq!(u64_at(&d2, 128 + 56), 10_800 * U, "remainder escrow");
+    assert_eq!(d2[128 + 66], 1, "a carried-over order stays GTC");
+    pass("rollover: GTC remainder moves to the next window with exact escrow");
+
     println!("max CU for place: {max_cu}");
 }
 
