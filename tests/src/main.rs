@@ -462,6 +462,14 @@ fn svm_tests(so: &str) {
     assert_eq!(env.vaults(), (0, 0));
     pass("rollover: fills across two windows settle to the unit, vaults at zero");
 
+    let lone = env.trader(0, 100_000 * U);
+    env.place_tif(&lone, BUY, usd(15000), 10 * U, 1).expect("lone gtc");
+    env.warp(61);
+    env.clear(&cranker).expect("clear 3");
+    env.cancel(&lone, 0, BUY).expect("cancel rolled");
+    assert_eq!(amount(&env.svm, &lone.quote), 100_000 * U, "a carried-over order cancels with no loss");
+    pass("rollover: an unmatched GTC order rolls whole and cancels in full");
+
     println!("max CU for place: {max_cu}");
 }
 
