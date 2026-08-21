@@ -470,6 +470,22 @@ fn svm_tests(so: &str) {
     assert_eq!(amount(&env.svm, &lone.quote), 100_000 * U, "a carried-over order cancels with no loss");
     pass("rollover: an unmatched GTC order rolls whole and cancels in full");
 
+    let b3 = env.book(3);
+    let payer3 = Pubkey::new_from_array(env.svm.get_account(&b3).unwrap().data[96..128].try_into().unwrap());
+    assert_eq!(payer3, lone.kp.pubkey(), "book 3 was opened by lone's order");
+    assert!(env.close_book(b3, cranker.pubkey(), &cranker).is_err(), "wrong rent recipient");
+    env.close_book(b3, payer3, &cranker).expect("close book 3");
+    assert!(env.svm.get_account(&b3).map(|a| a.lamports == 0).unwrap_or(true), "book 3 is closed");
+    let p4 = Pubkey::new_from_array(env.svm.get_account(&env.book(4)).unwrap().data[96..128].try_into().unwrap());
+    assert_eq!(p4, cranker.pubkey(), "the carry-over book was paid for by the cranker");
+    pass("close_book: settled books close, rent goes back to whoever paid it");
+
+    env.warp(61);
+    env.clear(&cranker).expect("empty clear");
+    assert_eq!(env.market_u64(M_AUCTION), 5);
+    pass("an empty window rolls over");
+
+
     println!("max CU for place: {max_cu}");
 }
 
