@@ -20,5 +20,5 @@ pinocchio-associated-token-account = "0.4.0"
 overflow-checks = true
 lto = "fat"
 codegen-units = 1
-opt-level = "s"
+opt-level = "z"
 strip = true
