@@ -67,6 +67,26 @@
 //! | 67  | 1   | internal: 1 = the remainder carries over         |
 //! | 72  | 8   | internal: escrow that moves with the remainder   |
 //!
+//! ## Day book, PDA ["day", market], DAY_LEN bytes, tag 8
+//!
+//! | off | len | header                                           |
+//! |-----|-----|--------------------------------------------------|
+//! | 0   | 1   | tag                                              |
+//! | 1   | 1   | bump                                             |
+//! | 8   | 32  | market                                           |
+//! | 40  | 32  | payer                                            |
+//!
+//! | off | len | book entry (slot)                                |
+//! |-----|-----|--------------------------------------------------|
+//! | 0   | 32  | owner                                            |
+//! | 32  | 8   | price                                            |
+//! | 40  | 8   | qty: how much still rests in the book            |
+//! | 48  | 8   | escrow: what backs the remainder                 |
+//! | 56  | 8   | owed: earned and not yet claimed                 |
+//! |     |     | (quote for a sell, base for a buy)               |
+//! | 64  | 8   | seq: arrival order                               |
+//! | 72  | 1   | side                                             |
+//! | 73  | 1   | status: 0 empty, 1 in book, 2 moved to auction   |
 
 use crate::clearing::CAP;
 use pinocchio::Address;
