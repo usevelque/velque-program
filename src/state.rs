@@ -98,12 +98,23 @@ pub const HEADER: usize = 128;
 pub const ENTRY: usize = 80;
 pub const BOOK_LEN: usize = HEADER + CAP * ENTRY;
 pub const BOOK_TAG: u8 = 7;
+
+pub const DAY_HEADER: usize = 72;
+pub const DAY_ENTRY: usize = 80;
+pub const DAY_CAP: usize = 64;
+pub const DAY_LEN: usize = DAY_HEADER + DAY_CAP * DAY_ENTRY;
+pub const DAY_TAG: u8 = 8;
+
 pub const TIF_ONE: u8 = 0;
 pub const TIF_GTC: u8 = 1;
 
 pub const LIVE: u8 = 1;
 pub const CANCELLED: u8 = 2;
 pub const CLAIMED: u8 = 3;
+
+pub const D_EMPTY: u8 = 0;
+pub const D_LIVE: u8 = 1;
+pub const D_MOVED: u8 = 2;
 
 pub fn get_u64(d: &[u8], off: usize) -> u64 {
     let mut b = [0u8; 8];
@@ -182,8 +193,28 @@ pub mod e {
     pub const ROLL_ESCROW: usize = 72;
 }
 
+pub mod dh {
+    pub const BUMP: usize = 1;
+    pub const MARKET: usize = 8;
+    pub const PAYER: usize = 40;
+}
+
+pub mod de {
+    pub const OWNER: usize = 0;
+    pub const PRICE: usize = 32;
+    pub const QTY: usize = 40;
+    pub const ESCROW: usize = 48;
+    pub const OWED: usize = 56;
+    pub const SEQ: usize = 64;
+    pub const SIDE: usize = 72;
+    pub const STATUS: usize = 73;
+}
+
 pub fn entry_off(i: usize) -> usize {
     HEADER + i * ENTRY
+}
+pub fn day_off(i: usize) -> usize {
+    DAY_HEADER + i * DAY_ENTRY
 }
 
 pub fn count(book: &[u8]) -> usize {
