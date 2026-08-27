@@ -43,6 +43,7 @@ pub const TOKEN_2022: Address = Address::from_str_const("TokenzQdBNbLqP5VEhdkAS6
 
 pub const SEED_MARKET: &[u8] = b"market";
 pub const SEED_BOOK: &[u8] = b"book";
+pub const SEED_DAY: &[u8] = b"day";
 
 #[cfg(not(feature = "no-entrypoint"))]
 mod entry {
@@ -247,6 +248,10 @@ fn book_key(market: &Address, auction_id: u64, program_id: &Address) -> (Address
     Address::find_program_address(&[SEED_BOOK, market.as_ref(), &auction_id.to_le_bytes()], program_id)
 }
 
+fn day_key(market: &Address, program_id: &Address) -> (Address, u8) {
+    Address::find_program_address(&[SEED_DAY, market.as_ref()], program_id)
+}
+
 /// Create the book for window `id` if it does not exist yet. `payer` pays the rent.
 fn ensure_book(
     program_id: &Address,
@@ -279,6 +284,31 @@ fn ensure_book(
     put_u64(&mut d, b::AUCTION_ID, id);
     put_i64(&mut d, b::WINDOW_END, window_end);
     put_addr(&mut d, b::PAYER, payer.address());
+    Ok(())
+}
+
+/// Create the market's day book if it does not exist yet. `payer` pays the rent.
+fn ensure_day(program_id: &Address, payer: &AccountView, day: &AccountView, market: &Address) -> ProgramResult {
+    let (dk, bump) = day_key(market, program_id);
+    if day.address() != &dk {
+        return Err(VelqueError::BadPda.into());
+    }
+    if day.data_len() > 0 {
+        if !day.owned_by(program_id) {
+            return Err(VelqueError::BadAccount.into());
+        }
+        return Ok(());
+    }
+    let bb = [bump];
+    let seeds = [Seed::from(SEED_DAY), Seed::from(market.as_ref()), Seed::from(&bb)];
+    CreateAccount::with_minimum_balance(payer, day, DAY_LEN as u64, program_id, None)?
+        .invoke_signed(&[Signer::from(&seeds)])?;
+    let mut dv = *day;
+    let mut d = dv.try_borrow_mut()?;
+    d[0] = DAY_TAG;
+    d[dh::BUMP] = bump;
+    put_addr(&mut d, dh::MARKET, market);
+    put_addr(&mut d, dh::PAYER, payer.address());
     Ok(())
 }
 
