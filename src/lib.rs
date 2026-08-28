@@ -312,6 +312,34 @@ fn ensure_day(program_id: &Address, payer: &AccountView, day: &AccountView, mark
     Ok(())
 }
 
+/// Next sequence number in the day book queue.
+fn next_seq(market: &AccountView) -> Result<u64, ProgramError> {
+    let mut mk = *market;
+    let mut d = mk.try_borrow_mut()?;
+    let s = get_u64(&d, m::DAY_SEQ) + 1;
+    put_u64(&mut d, m::DAY_SEQ, s);
+    Ok(s)
+}
+
+/// Put an entry into a free day book slot. None if there is no room.
+fn day_insert(d: &mut [u8], owner: &[u8], price: u64, qty: u64, escrow: u64, side: u8, seq: u64) -> Option<usize> {
+    for i in 0..DAY_CAP {
+        let o = day_off(i);
+        if d[o + de::STATUS] == D_EMPTY {
+            d[o..o + 32].copy_from_slice(owner);
+            put_u64(d, o + de::PRICE, price);
+            put_u64(d, o + de::QTY, qty);
+            put_u64(d, o + de::ESCROW, escrow);
+            put_u64(d, o + de::OWED, 0);
+            put_u64(d, o + de::SEQ, seq);
+            d[o + de::SIDE] = side;
+            d[o + de::STATUS] = D_LIVE;
+            return Some(i);
+        }
+    }
+    None
+}
+
 // ================================================================ init_market
 
 /// Accounts:
