@@ -825,3 +825,15 @@ fn close_book(program_id: &Address, accounts: &[AccountView]) -> ProgramResult {
     bv.close()
 }
 
+// ================================================================ day book
+
+/// Result of matching an incoming day order against the book.
+struct Taken {
+    /// base the taker received (buy) or gave (sell)
+    base: u64,
+    /// quote the taker paid (buy) or received (sell)
+    quote: u64,
+    rem: u64,
+    last: u64,
+}
+
