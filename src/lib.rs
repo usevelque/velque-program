@@ -837,3 +837,60 @@ struct Taken {
     last: u64,
 }
 
+/// Match an incoming order against the book: best price first, at an equal
+/// price the earlier arrival. The trade executes at the resting order's price.
+/// Own orders are skipped. One pass over the slots, then a sort of the opposing
+/// orders: this keeps a taker sweeping the whole book within the compute budget.
+#[inline(never)]
+fn match_day(d: &mut [u8], taker: &Address, side: u8, limit: u64, qty: u64, dec: u8) -> Result<Taken, ProgramError> {
+    let mut tk = Taken { base: 0, quote: 0, rem: qty, last: 0 };
+    // (price key, seq, slot): the key grows from the best price to the worst
+    let mut cand = [(0u64, 0u64, 0u8); DAY_CAP];
+    let mut k = 0usize;
+    for i in 0..DAY_CAP {
+        let o = day_off(i);
+        if d[o + de::STATUS] != D_LIVE || d[o + de::SIDE] == side || get_u64(d, o + de::QTY) == 0 {
+            continue;
+        }
+        let p = get_u64(d, o + de::PRICE);
+        let crosses = if side == BUY { p <= limit } else { p >= limit };
+        if !crosses || d[o..o + 32] == *taker.as_ref() {
+            continue;
+        }
+        let key = if side == BUY { p } else { u64::MAX - p };
+        cand[k] = (key, get_u64(d, o + de::SEQ), i as u8);
+        k += 1;
+    }
+    cand[..k].sort_unstable();
+    for &(key, _, slot) in cand[..k].iter() {
+        if tk.rem == 0 {
+            break;
+        }
+        let i = slot as usize;
+        let p = if side == BUY { key } else { u64::MAX - key };
+        let o = day_off(i);
+        let mq = get_u64(d, o + de::QTY);
+        let q = tk.rem.min(mq);
+        let escrow = get_u64(d, o + de::ESCROW);
+        let owed = get_u64(d, o + de::OWED);
+        let up = quote_for(p, q, dec, true).ok_or(VelqueError::Math)?;
+        let down = quote_for(p, q, dec, false).ok_or(VelqueError::Math)?;
+        if side == BUY {
+            // maker sells: gives q base out of escrow, earns quote rounded down
+            tk.quote = tk.quote.checked_add(up).ok_or(VelqueError::Math)?;
+            put_u64(d, o + de::ESCROW, escrow.checked_sub(q).ok_or(VelqueError::Math)?);
+            put_u64(d, o + de::OWED, owed.checked_add(down).ok_or(VelqueError::Math)?);
+        } else {
+            // maker buys: pays quote rounded up out of escrow, earns base
+            tk.quote = tk.quote.checked_add(down).ok_or(VelqueError::Math)?;
+            put_u64(d, o + de::ESCROW, escrow - up.min(escrow));
+            put_u64(d, o + de::OWED, owed.checked_add(q).ok_or(VelqueError::Math)?);
+        }
+        tk.base += q;
+        put_u64(d, o + de::QTY, mq - q);
+        tk.rem -= q;
+        tk.last = p;
+    }
+    Ok(tk)
+}
+
