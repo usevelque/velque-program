@@ -93,6 +93,7 @@ pub fn process_instruction(
         Some((4, rest)) => claim(program_id, accounts, rest),
         Some((5, rest)) => set_reference(program_id, accounts, rest),
         Some((6, _)) => close_book(program_id, accounts),
+        Some((7, rest)) => place_day(program_id, accounts, rest),
         _ => Err(ProgramError::InvalidInstructionData),
     }
 }
@@ -892,5 +893,85 @@ fn match_day(d: &mut [u8], taker: &Address, side: u8, limit: u64, qty: u64, dec:
         tk.last = p;
     }
     Ok(tk)
+}
+
+/// Accounts:
+///  0 owner                 [signer, writable]
+///  1 market                [writable]
+///  2 day book              [writable]  created by the first order
+///  3 owner's base account  [writable]
+///  4 owner's quote account [writable]
+///  5 vbase                 [writable]
+///  6 vquote                [writable]
+///  7 base_mint
+///  8 quote_mint
+///  9 base program
+/// 10 quote program
+/// 11 System program
+///
+/// Data: side u8, price u64, qty u64.
+fn place_day(program_id: &Address, accounts: &[AccountView], data: &[u8]) -> ProgramResult {
+    let [owner, market, day, owner_base, owner_quote, vbase, vquote, base_mint, quote_mint, base_prog, quote_prog, _system, ..] = accounts else {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    };
+    if !owner.is_signer() {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    let side = *data.first().ok_or(ProgramError::InvalidInstructionData)?;
+    let price = read_u64(data, 1)?;
+    let qty = read_u64(data, 9)?;
+    let mv = load_market(program_id, market)?;
+    if (side != BUY && side != SELL) || price == 0 || price % mv.tick != 0 || qty == 0 || qty % mv.lot != 0 {
+        return Err(VelqueError::BadParams.into());
+    }
+    if !mv.is_day(now()?) {
+        return Err(VelqueError::SessionDark.into());
+    }
+    // band around the reference: a price far from Nasdaq does not get into the book
+    let r = mv.reference as u128;
+    let lo = r * (10_000 - mv.band_bps) as u128 / 10_000;
+    let hi = r * (10_000 + mv.band_bps) as u128 / 10_000;
+    if (price as u128) < lo || (price as u128) > hi {
+        return Err(VelqueError::OutOfBand.into());
+    }
+    let bl = leg(&mv, true, vbase, base_mint, base_prog)?;
+    let ql = leg(&mv, false, vquote, quote_mint, quote_prog)?;
+    check_token_account(owner_base, &mv.base_mint)?;
+    check_token_account(owner_quote, &mv.quote_mint)?;
+
+    let mk = market.address();
+    ensure_day(program_id, owner, day, mk)?;
+    let (tk, rested_escrow) = {
+        let mut dv = *day;
+        let mut d = dv.try_borrow_mut()?;
+        if d.len() != DAY_LEN || d[0] != DAY_TAG || get_addr(&d, dh::MARKET) != *mk {
+            return Err(VelqueError::BadAccount.into());
+        }
+        let tk = match_day(&mut d, owner.address(), side, price, qty, mv.base_dec)?;
+        let mut rested = 0u64;
+        if tk.rem > 0 {
+            let escrow = if side == BUY { quote_for(price, tk.rem, mv.base_dec, true).ok_or(VelqueError::Math)? } else { tk.rem };
+            let seq = next_seq(market)?;
+            // no room: the remainder does not rest in the book, what was filled stands
+            if day_insert(&mut d, owner.address().as_ref(), price, tk.rem, escrow, side, seq).is_some() {
+                rested = escrow;
+            }
+        }
+        (tk, rested)
+    };
+
+    if side == BUY {
+        pay_in(&ql, owner_quote, owner, tk.quote + rested_escrow)?;
+        pay_out(&bl, owner_base, market, &mv, tk.base)?;
+    } else {
+        pay_in(&bl, owner_base, owner, tk.base + rested_escrow)?;
+        pay_out(&ql, owner_quote, market, &mv, tk.quote)?;
+    }
+    if tk.last > 0 {
+        let mut mkv = *market;
+        let mut md = mkv.try_borrow_mut()?;
+        put_u64(&mut md, m::LAST_PRICE, tk.last);
+    }
+    Ok(())
 }
 
