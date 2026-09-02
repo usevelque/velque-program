@@ -94,6 +94,8 @@ pub fn process_instruction(
         Some((5, rest)) => set_reference(program_id, accounts, rest),
         Some((6, _)) => close_book(program_id, accounts),
         Some((7, rest)) => place_day(program_id, accounts, rest),
+        Some((8, rest)) => day_exit(program_id, accounts, rest, true),
+        Some((9, rest)) => day_exit(program_id, accounts, rest, false),
         _ => Err(ProgramError::InvalidInstructionData),
     }
 }
@@ -973,5 +975,58 @@ fn place_day(program_id: &Address, accounts: &[AccountView], data: &[u8]) -> Pro
         put_u64(&mut md, m::LAST_PRICE, tk.last);
     }
     Ok(())
+}
+
+/// cancel_day (full = true): pull the order, return the remaining escrow and
+/// what it earned. Works in any session.
+/// claim_day (full = false): claim what was earned; if the order is fully
+/// filled or has moved to the auction, also return the remainder and free the slot.
+///
+/// Accounts: 0 owner [signer], 1 market, 2 day book [w], 3 base account [w],
+/// 4 quote account [w], 5 vbase [w], 6 vquote [w], 7 base_mint, 8 quote_mint,
+/// 9 base program, 10 quote program. Data: index u16.
+fn day_exit(program_id: &Address, accounts: &[AccountView], data: &[u8], full: bool) -> ProgramResult {
+    let [owner, market, day, owner_base, owner_quote, vbase, vquote, base_mint, quote_mint, base_prog, quote_prog, ..] = accounts else {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    };
+    if !owner.is_signer() {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    let idx = read_u16(data, 0)? as usize;
+    let mv = load_market(program_id, market)?;
+    let bl = leg(&mv, true, vbase, base_mint, base_prog)?;
+    let ql = leg(&mv, false, vquote, quote_mint, quote_prog)?;
+    check_token_account(owner_base, &mv.base_mint)?;
+    check_token_account(owner_quote, &mv.quote_mint)?;
+    let (dk, _) = day_key(market.address(), program_id);
+    if day.address() != &dk || !day.owned_by(program_id) || idx >= DAY_CAP {
+        return Err(VelqueError::BadPda.into());
+    }
+    let (base_out, quote_out) = {
+        let mut dv = *day;
+        let mut d = dv.try_borrow_mut()?;
+        let o = day_off(idx);
+        if d[o + de::STATUS] == D_EMPTY {
+            return Err(VelqueError::BadStatus.into());
+        }
+        if get_addr(&d, o + de::OWNER) != *owner.address() {
+            return Err(VelqueError::NotOwner.into());
+        }
+        let side = d[o + de::SIDE];
+        let owed = get_u64(&d, o + de::OWED);
+        let escrow = get_u64(&d, o + de::ESCROW);
+        let finished = full || d[o + de::STATUS] == D_MOVED || get_u64(&d, o + de::QTY) == 0;
+        put_u64(&mut d, o + de::OWED, 0);
+        let give_escrow = if finished { escrow } else { 0 };
+        if finished {
+            put_u64(&mut d, o + de::ESCROW, 0);
+            put_u64(&mut d, o + de::QTY, 0);
+            d[o + de::STATUS] = D_EMPTY;
+        }
+        // sell: escrow in base, earnings in quote; buy is the reverse
+        if side == SELL { (give_escrow, owed) } else { (owed, give_escrow) }
+    };
+    pay_out(&bl, owner_base, market, &mv, base_out)?;
+    pay_out(&ql, owner_quote, market, &mv, quote_out)
 }
 
