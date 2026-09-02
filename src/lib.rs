@@ -369,7 +369,7 @@ fn init_market(program_id: &Address, accounts: &[AccountView], data: &[u8]) -> P
     let reference = read_u64(data, 24)?;
     let max_age = read_u64(data, 32)?;
     let band_bps = read_u64(data, 40)?;
-    if window_secs == 0 || tick == 0 || lot == 0 || reference % tick != 0 || max_age == 0 || band_bps == 0 || band_bps > 10_000 {
+    if window_secs == 0 || tick == 0 || lot == 0 || reference % tick != 0 || max_age == 0 || band_bps == 0 || band_bps > 5_000 {
         return Err(VelqueError::BadParams.into());
     }
     if !is_token_program(base_prog.address()) || !is_token_program(quote_prog.address()) {
