@@ -618,6 +618,24 @@ fn roll_into_book(src: &mut [u8], dst: &mut [u8]) {
     set_count(dst, k);
 }
 
+/// Carry the flagged orders over into the day book (opening cross). A full
+/// book does not stop the cross: the remainder goes back to the owner on claim.
+fn roll_into_day(src: &mut [u8], day: &mut [u8], market: &AccountView) -> ProgramResult {
+    for i in 0..count(src) {
+        let so = entry_off(i);
+        if src[so + e::ROLL] != 1 {
+            continue;
+        }
+        let seq = next_seq(market)?;
+        let rem = get_u64(src, so + e::QTY) - get_u64(src, so + e::FILLED);
+        let esc = get_u64(src, so + e::ROLL_ESCROW);
+        let owner = get_addr(src, so);
+        if day_insert(day, owner.as_ref(), get_u64(src, so + e::PRICE), rem, esc, src[so + e::SIDE], seq).is_none() {
+        }
+    }
+    Ok(())
+}
+
 /// Accounts:
 ///  0 cranker              [signer, writable]  anyone; pays the rent if needed
 ///  1 market               [writable]
