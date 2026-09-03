@@ -96,6 +96,7 @@ pub fn process_instruction(
         Some((7, rest)) => place_day(program_id, accounts, rest),
         Some((8, rest)) => day_exit(program_id, accounts, rest, true),
         Some((9, rest)) => day_exit(program_id, accounts, rest, false),
+        Some((10, _)) => close_day(program_id, accounts),
         _ => Err(ProgramError::InvalidInstructionData),
     }
 }
@@ -1028,5 +1029,72 @@ fn day_exit(program_id: &Address, accounts: &[AccountView], data: &[u8], full: b
     };
     pay_out(&bl, owner_base, market, &mv, base_out)?;
     pay_out(&ql, owner_quote, market, &mv, quote_out)
+}
+
+/// Accounts:
+///  0 cranker              [signer, writable]  anyone; pays the book's rent if needed
+///  1 market
+///  2 day book             [writable]
+///  3 current window book  [writable]
+///  4 System program
+///
+/// Dark only: live day orders move into the current window as "until
+/// cancelled" orders together with their escrow. What they earned stays in
+/// the day book slot until claim_day.
+fn close_day(program_id: &Address, accounts: &[AccountView]) -> ProgramResult {
+    let [cranker, market, day, book, _system, ..] = accounts else {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    };
+    if !cranker.is_signer() {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    let mv = load_market(program_id, market)?;
+    let t = now()?;
+    if mv.is_day(t) {
+        return Err(VelqueError::SessionDay.into());
+    }
+    if t >= mv.window_end {
+        return Err(VelqueError::WindowClosed.into());
+    }
+    let mk = market.address();
+    let (dk, _) = day_key(mk, program_id);
+    if day.address() != &dk || !day.owned_by(program_id) {
+        return Err(VelqueError::BadPda.into());
+    }
+    ensure_book(program_id, cranker, book, mk, mv.auction_id, mv.window_end)?;
+    let mut dv = *day;
+    let mut dd = dv.try_borrow_mut()?;
+    let mut bv = *book;
+    let mut bd = bv.try_borrow_mut()?;
+    if bd[0] != BOOK_TAG || bd[b::STATE] != 0 {
+        return Err(VelqueError::BadStatus.into());
+    }
+    let mut n = count(&bd);
+    let mut moved = 0usize;
+    for i in 0..DAY_CAP {
+        let o = day_off(i);
+        if dd[o + de::STATUS] != D_LIVE || get_u64(&dd, o + de::QTY) == 0 || n >= CAP {
+            continue;
+        }
+        let bo = entry_off(n);
+        bd[bo..bo + 32].copy_from_slice(&dd[o..o + 32]);
+        put_u64(&mut bd, bo + e::PRICE, get_u64(&dd, o + de::PRICE));
+        put_u64(&mut bd, bo + e::QTY, get_u64(&dd, o + de::QTY));
+        put_u64(&mut bd, bo + e::FILLED, 0);
+        put_u64(&mut bd, bo + e::ESCROW, get_u64(&dd, o + de::ESCROW));
+        bd[bo + e::SIDE] = dd[o + de::SIDE];
+        bd[bo + e::STATUS] = LIVE;
+        bd[bo + e::TIF] = TIF_GTC;
+        n += 1;
+        moved += 1;
+        put_u64(&mut dd, o + de::QTY, 0);
+        put_u64(&mut dd, o + de::ESCROW, 0);
+        dd[o + de::STATUS] = if get_u64(&dd, o + de::OWED) > 0 { D_MOVED } else { D_EMPTY };
+    }
+    set_count(&mut bd, n);
+    if moved == 0 {
+        return Err(VelqueError::NothingToMove.into());
+    }
+    Ok(())
 }
 
