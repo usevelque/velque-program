@@ -228,6 +228,10 @@ pub fn set_count(book: &mut [u8], n: usize) {
 /// the seller receives rounded down: the dust stays in the vault, so the
 /// vault can never go negative.
 pub fn quote_for(price: u64, qty: u64, decimals: u8, round_up: bool) -> Option<u64> {
+    // fast path: the product fits in u64, so the division is native
+    if let (Some(unit), Some(num)) = (10u64.checked_pow(decimals as u32), price.checked_mul(qty)) {
+        return Some(if round_up { num.div_ceil(unit) } else { num / unit });
+    }
     let unit = 10u128.checked_pow(decimals as u32)?;
     let num = (price as u128).checked_mul(qty as u128)?;
     let v = if round_up { num.div_ceil(unit) } else { num / unit };
