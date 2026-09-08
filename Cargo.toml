@@ -2,7 +2,7 @@
 name = "velque"
 version = "0.1.0"
 edition = "2021"
-description = "Velque: order book for tokenized stocks on Solana, night auctions at one price"
+description = "Velque: order book for tokenized stocks on Solana, day book, night auctions, opening cross"
 
 [lib]
 crate-type = ["cdylib", "lib"]

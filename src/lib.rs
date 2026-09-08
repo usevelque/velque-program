@@ -15,6 +15,10 @@
 //!   4  claim(index)                   claim the fill and the change for a window
 //!   5  set_reference(price)           reference price (authority = oracle)
 //!   6  close_book                     close a settled window book
+//!   7  place_day(side, price, qty)    day book order (Day only)
+//!   8  cancel_day(index)              pull a day order, return everything
+//!   9  claim_day(index)               claim what a day order has earned
+//!   10 close_day                      in Dark, move day orders into the auction
 //!
 //! Both token programs are supported, SPL Token and Token-2022 (the real
 //! xStocks are issued on Token-2022). The vaults are the market's ATAs, and
@@ -689,12 +693,21 @@ fn clear(program_id: &Address, accounts: &[AccountView]) -> ProgramResult {
             rolls
         };
         if rolls > 0 {
+            if cross {
+                ensure_day(program_id, cranker, day, mk)?;
+                let mut sb = *book;
+                let mut src = sb.try_borrow_mut()?;
+                let mut dv = *day;
+                let mut dd = dv.try_borrow_mut()?;
+                roll_into_day(&mut src, &mut dd, market)?;
+            } else {
                 ensure_book(program_id, cranker, next_book, mk, next_id, next_end)?;
                 let mut sb = *book;
                 let mut src = sb.try_borrow_mut()?;
                 let mut nb = *next_book;
                 let mut dst = nb.try_borrow_mut()?;
                 roll_into_book(&mut src, &mut dst);
+            }
         }
     }
 
