@@ -538,6 +538,23 @@ fn svm_tests(so: &str) {
     assert_eq!(env.market_u64(M_AUCTION), 5);
     pass("an empty window rolls over");
 
+    // ---------------------------------------------------------------- opening cross
+
+    // night: a GTC buy of 30 @ 181.00 and a sell of 20 @ 180.50 wait in window 5
+    let night_buy = env.trader(0, 100_000 * U);
+    let night_sell = env.trader(1_000 * U, 0);
+    env.place_tif(&night_buy, BUY, usd(18100), 30 * U, 1).expect("night buy");
+    env.place(&night_sell, SELL, usd(18050), 20 * U).expect("night sell");
+    expect_err(env.place_day(&night_buy, BUY, usd(18100), U), 13, "day order in Dark");
+    pass("dark: the day book is closed, place_day is rejected");
+
+    // oracle: a stranger cannot, the authority can; a fresh reference means Day
+    let stranger = Keypair::new();
+    env.svm.airdrop(&stranger.pubkey(), 1_000_000_000).unwrap();
+    expect_err(env.set_reference(&stranger, usd(18080)), 11, "stranger as oracle");
+    env.set_reference(&admin, usd(18080)).expect("set_reference");
+    expect_err(env.place(&night_sell, SELL, usd(18050), U), 12, "auction order during Day");
+    pass("set_reference: only the authority; a fresh reference switches the market to Day");
 
     println!("max CU for place: {max_cu}");
 }
