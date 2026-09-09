@@ -293,8 +293,61 @@ impl Env {
         };
         self.send(ix, signer)
     }
+    fn place_day(&mut self, t: &Trader, side: u8, price: u64, qty: u64) -> Result<u64, String> {
+        let mut data = vec![7u8, side];
+        data.extend_from_slice(&price.to_le_bytes());
+        data.extend_from_slice(&qty.to_le_bytes());
+        let mut accounts = vec![
+            AccountMeta::new(t.kp.pubkey(), true),
+            AccountMeta::new(self.market, false),
+            AccountMeta::new(self.day, false),
+        ];
+        accounts.extend(self.both_legs(t));
+        accounts.push(AccountMeta::new_readonly(SYSTEM, false));
+        self.send(Instruction { program_id: self.pid, accounts, data }, &t.kp)
+    }
+    fn day_exit(&mut self, t: &Trader, idx: u16, cancel: bool) -> Result<u64, String> {
+        let mut data = vec![if cancel { 8u8 } else { 9u8 }];
+        data.extend_from_slice(&idx.to_le_bytes());
+        let mut accounts = vec![
+            AccountMeta::new_readonly(t.kp.pubkey(), true),
+            AccountMeta::new_readonly(self.market, false),
+            AccountMeta::new(self.day, false),
+        ];
+        accounts.extend(self.both_legs(t));
+        self.send(Instruction { program_id: self.pid, accounts, data }, &t.kp)
+    }
+    fn close_day(&mut self, cranker: &Keypair) -> Result<u64, String> {
+        let id = self.market_u64(M_AUCTION);
+        let ix = Instruction {
+            program_id: self.pid,
+            accounts: vec![
+                AccountMeta::new(cranker.pubkey(), true),
+                AccountMeta::new_readonly(self.market, false),
+                AccountMeta::new(self.day, false),
+                AccountMeta::new(self.book(id), false),
+                AccountMeta::new_readonly(SYSTEM, false),
+            ],
+            data: vec![10u8],
+        };
+        self.send(ix, cranker)
+    }
     fn market_u64(&self, off: usize) -> u64 {
         u64_at(&self.svm.get_account(&self.market).unwrap().data, off)
+    }
+    /// (owner, price, qty, escrow, owed, side, status) of a day book slot
+    fn day_slot(&self, i: usize) -> (Pubkey, u64, u64, u64, u64, u8, u8) {
+        let d = self.svm.get_account(&self.day).unwrap().data;
+        let o = DAY_HEADER + i * DAY_ENTRY;
+        (
+            Pubkey::new_from_array(d[o..o + 32].try_into().unwrap()),
+            u64_at(&d, o + 32),
+            u64_at(&d, o + 40),
+            u64_at(&d, o + 48),
+            u64_at(&d, o + 56),
+            d[o + 72],
+            d[o + 73],
+        )
     }
     fn warp(&mut self, secs: i64) {
         let mut c: Clock = self.svm.get_sysvar();
