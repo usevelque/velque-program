@@ -556,6 +556,21 @@ fn svm_tests(so: &str) {
     expect_err(env.place(&night_sell, SELL, usd(18050), U), 12, "auction order during Day");
     pass("set_reference: only the authority; a fresh reference switches the market to Day");
 
+    // window 5 has not ended yet, but during Day clearing a book with orders is the cross
+    assert!((env.market_u64(M_WINDOW_END) as i64) > env.svm.get_sysvar::<Clock>().unix_timestamp, "window still open");
+    let b5 = env.book(5);
+    let cu = env.clear(&cranker).expect("opening cross");
+    let d5 = env.svm.get_account(&b5).unwrap().data;
+    assert_eq!(u64_at(&d5, 64), 20 * U, "cross: 20 shares");
+    let cross_price = u64_at(&d5, 56);
+    assert!(cross_price >= usd(18050) && cross_price <= usd(18100), "cross price is between the orders");
+    // the remainder of the GTC buy (10 shares) rests in the day book with its own escrow
+    let (owner, price, qty, escrow, owed, side, status) = env.day_slot(0);
+    assert_eq!(owner, night_buy.kp.pubkey());
+    assert_eq!((price, qty, side, status, owed), (usd(18100), 10 * U, BUY, 1, 0));
+    assert_eq!(escrow, 30 * 18_100 * U / 100 - u64_at(&d5, 128 + 56), "remainder escrow = total minus what stays behind the fill");
+    pass(&format!("opening cross: clears before the window ends at {}, GTC remainder rests in the day book ({cu} CU)", cross_price as f64 / U as f64));
+
     println!("max CU for place: {max_cu}");
 }
 
