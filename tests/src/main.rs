@@ -571,6 +571,16 @@ fn svm_tests(so: &str) {
     assert_eq!(escrow, 30 * 18_100 * U / 100 - u64_at(&d5, 128 + 56), "remainder escrow = total minus what stays behind the fill");
     pass(&format!("opening cross: clears before the window ends at {}, GTC remainder rests in the day book ({cu} CU)", cross_price as f64 / U as f64));
 
+    env.claim(&night_buy, b5, 0).expect("claim cross buy");
+    env.claim(&night_sell, b5, 1).expect("claim cross sell");
+    assert_eq!(amount(&env.svm, &night_buy.base), 20 * U);
+    assert_eq!(amount(&env.svm, &night_sell.quote), 20 * cross_price);
+    env.day_exit(&night_buy, 0, true).expect("cancel rolled remainder");
+    assert_eq!(amount(&env.svm, &night_buy.quote), 100_000 * U - 20 * cross_price, "20 shares at the cross price, the remainder returned");
+    assert_eq!(env.vaults(), (0, 0));
+    pass("opening cross: fills claim at one price, the rested remainder cancels in full");
+
+
     println!("max CU for place: {max_cu}");
 }
 
