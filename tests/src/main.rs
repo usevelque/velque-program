@@ -590,6 +590,24 @@ fn svm_tests(so: &str) {
     expect_err(env.place_day(&maker1, BUY, usd(17000), U), 14, "price outside the band");
     pass("band: prices more than 5% from the reference are rejected");
 
+    // book: sells of 10 @ 180.80 (maker1) and 5 @ 180.90 (maker2)
+    env.place_day(&maker1, SELL, usd(18080), 10 * U).expect("m1 ask");
+    env.place_day(&maker2, SELL, usd(18090), 5 * U).expect("m2 ask");
+    assert_eq!(amount(&env.svm, &maker1.base), 90 * U, "the sell went into escrow");
+    // a buy of 12 @ 181.00 hits the best price first and pays the maker's price
+    let tq = amount(&env.svm, &taker.quote);
+    let cu = env.place_day(&taker, BUY, usd(18100), 12 * U).expect("taker buy");
+    assert_eq!(amount(&env.svm, &taker.base), 112 * U, "taker received 12 immediately");
+    assert_eq!(tq - amount(&env.svm, &taker.quote), 10 * 18_080 * U / 100 + 2 * 18_090 * U / 100, "at maker prices, not at its own limit");
+    assert_eq!(env.market_u64(M_LAST), usd(18090));
+    // no order is left in the book: the taker filled completely
+    let (_, _, q1, e1, o1, _, st1) = env.day_slot(0);
+    assert_eq!((q1, e1, o1, st1), (0, 0, 10 * 18_080 * U / 100, 1), "maker1 fully filled");
+    let (_, _, q2, e2, o2, _, _) = env.day_slot(1);
+    assert_eq!((q2, e2, o2), (3 * U, 3 * U, 2 * 18_090 * U / 100), "maker2 filled for 2");
+    assert_eq!(env.day_slot(2).6, 0, "taker did not rest in the book");
+    pass(&format!("day book: price then time, taker pays maker prices, fills settle instantly ({cu} CU)"));
+
     println!("max CU for place: {max_cu}");
 }
 
