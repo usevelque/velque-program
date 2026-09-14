@@ -580,6 +580,15 @@ fn svm_tests(so: &str) {
     assert_eq!(env.vaults(), (0, 0));
     pass("opening cross: fills claim at one price, the rested remainder cancels in full");
 
+    // ---------------------------------------------------------------- Day
+
+    // 5% band around 180.80: 171.76 .. 189.84
+    let maker1 = env.trader(100 * U, 100_000 * U);
+    let maker2 = env.trader(100 * U, 100_000 * U);
+    let taker = env.trader(100 * U, 100_000 * U);
+    expect_err(env.place_day(&maker1, SELL, usd(19000), U), 14, "price outside the band");
+    expect_err(env.place_day(&maker1, BUY, usd(17000), U), 14, "price outside the band");
+    pass("band: prices more than 5% from the reference are rejected");
 
     println!("max CU for place: {max_cu}");
 }
