@@ -608,6 +608,19 @@ fn svm_tests(so: &str) {
     assert_eq!(env.day_slot(2).6, 0, "taker did not rest in the book");
     pass(&format!("day book: price then time, taker pays maker prices, fills settle instantly ({cu} CU)"));
 
+    // own orders do not match: maker2 buys at its own sell price
+    let m2q = amount(&env.svm, &maker2.quote);
+    env.place_day(&maker2, BUY, usd(18090), U).expect("self cross");
+    let (o, _, q, e, _, s, st) = env.day_slot(2);
+    assert_eq!((o, q, s, st), (maker2.kp.pubkey(), U, BUY, 1), "rested instead of matching against itself");
+    assert_eq!(e, 18_090 * U / 100);
+    env.day_exit(&maker2, 2, true).expect("cancel_day");
+    assert_eq!(amount(&env.svm, &maker2.quote), m2q, "cancel_day returned everything");
+    assert_eq!(env.day_slot(2).6, 0, "slot is free");
+    expect_err(env.day_exit(&taker, 1, true), 7, "someone else's day order");
+    pass("day book: no self-match, cancel_day refunds in full, only the owner");
+
+
     println!("max CU for place: {max_cu}");
 }
 
