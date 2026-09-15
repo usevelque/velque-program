@@ -620,6 +620,25 @@ fn svm_tests(so: &str) {
     expect_err(env.day_exit(&taker, 1, true), 7, "someone else's day order");
     pass("day book: no self-match, cancel_day refunds in full, only the owner");
 
+    // claim_day: maker1 is fully filled, collects the proceeds, the slot is freed
+    let m1q = amount(&env.svm, &maker1.quote);
+    env.day_exit(&maker1, 0, false).expect("claim_day m1");
+    assert_eq!(amount(&env.svm, &maker1.quote) - m1q, 10 * 18_080 * U / 100);
+    assert_eq!(env.day_slot(0).6, 0);
+    pass("claim_day: a filled maker collects proceeds and frees the slot");
+
+    // the taker sells into a resting bid: the trade happens at the buyer's price
+    let bidder = env.trader(0, 100_000 * U);
+    env.place_day(&bidder, BUY, usd(18060), 4 * U).expect("bid");
+    let slot_bid = (0..8).find(|&i| env.day_slot(i).0 == bidder.kp.pubkey()).unwrap();
+    let tq = amount(&env.svm, &taker.quote);
+    env.place_day(&taker, SELL, usd(18000), 4 * U).expect("taker sell");
+    assert_eq!(amount(&env.svm, &taker.quote) - tq, 4 * 18_060 * U / 100, "sold at 180.60, not at its own 180.00");
+    env.day_exit(&bidder, slot_bid as u16, false).expect("claim_day bidder");
+    assert_eq!(amount(&env.svm, &bidder.base), 4 * U);
+    assert_eq!(amount(&env.svm, &bidder.quote), 100_000 * U - 4 * 18_060 * U / 100);
+    pass("day book: a sell hits the resting bid at the bid price");
+
 
     println!("max CU for place: {max_cu}");
 }
