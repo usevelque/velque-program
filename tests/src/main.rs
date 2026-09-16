@@ -639,6 +639,30 @@ fn svm_tests(so: &str) {
     assert_eq!(amount(&env.svm, &bidder.quote), 100_000 * U - 4 * 18_060 * U / 100);
     pass("day book: a sell hits the resting bid at the bid price");
 
+    // ---------------------------------------------------------------- day close
+
+    // the reference went stale: Dark. The remaining 3 shares of maker2 move to the auction,
+    // what they earned stays in the slot until claim_day
+    env.warp(301);
+    expect_err(env.place_day(&taker, BUY, usd(18090), U), 13, "the day is over");
+    env.clear(&cranker).expect("clear expired window");
+    let id = env.market_u64(M_AUCTION);
+    let cu = env.close_day(&cranker).expect("close_day");
+    let (_, _, q, e, o, _, st) = env.day_slot(1);
+    assert_eq!((q, e, st), (0, 0, 2), "the entry moved, the slot awaits a claim");
+    assert_eq!(o, 2 * 18_090 * U / 100);
+    let bn = env.svm.get_account(&env.book(id)).unwrap().data;
+    let n = u16::from_le_bytes([bn[4], bn[5]]) as usize;
+    let moved = (0..n).map(|i| 128 + i * 80).find(|&off| bn[off..off + 32] == maker2.kp.pubkey().to_bytes()).expect("maker2 in the auction");
+    assert_eq!((u64_at(&bn, moved + 40), u64_at(&bn, moved + 56), bn[moved + 64], bn[moved + 66]), (3 * U, 3 * U, SELL, 1));
+    expect_err(env.close_day(&cranker), 15, "nothing left to carry over");
+    pass(&format!("close_day: live day orders move into the night auction as GTC ({cu} CU)"));
+
+    let m2q = amount(&env.svm, &maker2.quote);
+    env.day_exit(&maker2, 1, false).expect("claim_day moved");
+    assert_eq!(amount(&env.svm, &maker2.quote) - m2q, 2 * 18_090 * U / 100);
+    assert_eq!(env.day_slot(1).6, 0);
+    pass("claim_day: proceeds earned during the day survive the move");
 
     println!("max CU for place: {max_cu}");
 }
