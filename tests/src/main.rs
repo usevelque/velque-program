@@ -686,6 +686,29 @@ fn svm_tests(so: &str) {
     assert_eq!(env.vaults(), (0, 0), "after day, cross and night the vaults net to zero");
     pass("day, cross and night settle to the unit: both vaults at zero");
 
+    // ---------------------------------------------------------------- full book
+
+    let traders: Vec<Trader> = (0..65).map(|_| env.trader(1_000 * U, 1_000_000 * U)).collect();
+    let sid = env.market_u64(M_AUCTION);
+    for (i, t) in traders.iter().take(64).enumerate() {
+        let (side, price) = if i % 2 == 0 { (BUY, usd(17000 + i as u64 * 37)) } else { (SELL, usd(16900 + i as u64 * 41)) };
+        env.place(t, side, price, (1 + i as u64) * U).expect("stress place");
+    }
+    expect_err(env.place(&traders[64], BUY, usd(18000), U), 6, "65th order");
+    env.warp(61);
+    let cu = env.clear(&cranker).expect("stress clear");
+    assert!(cu < 400_000, "clearing 64 orders took {cu} CU");
+    let bd = env.svm.get_account(&env.book(sid)).unwrap().data;
+    let (price, volume) = (u64_at(&bd, 56), u64_at(&bd, 64));
+    let mut filled_buy = 0u64;
+    let mut filled_sell = 0u64;
+    for i in 0..64 {
+        let o = 128 + i * 80;
+        if bd[o + 64] == BUY { filled_buy += u64_at(&bd, o + 48) } else { filled_sell += u64_at(&bd, o + 48) }
+    }
+    assert_eq!(filled_buy, volume);
+    assert_eq!(filled_sell, volume);
+    pass(&format!("full book: 64 orders, 65th rejected, clears at {} for {} shares in {cu} CU", price as f64 / U as f64, volume / U));
 
     println!("max CU for place: {max_cu}");
 }
