@@ -664,6 +664,29 @@ fn svm_tests(so: &str) {
     assert_eq!(env.day_slot(1).6, 0);
     pass("claim_day: proceeds earned during the day survive the move");
 
+    // the carried-over sell fills at night and is claimed from the window's book
+    let night = env.trader(0, 100_000 * U);
+    env.place(&night, BUY, usd(18100), 3 * U).expect("night buy 2");
+    env.warp(61);
+    env.clear(&cranker).expect("night clear");
+    let bk = env.book(id);
+    let d = env.svm.get_account(&bk).unwrap().data;
+    let np = u64_at(&d, 56);
+    assert_eq!(u64_at(&d, 64), 3 * U);
+    let idx_m2 = (0..n + 1).find(|&i| d[128 + i * 80..128 + i * 80 + 32] == maker2.kp.pubkey().to_bytes()).unwrap();
+    let idx_night = (0..n + 1).find(|&i| d[128 + i * 80..128 + i * 80 + 32] == night.kp.pubkey().to_bytes()).unwrap();
+    env.claim(&maker2, bk, idx_m2 as u16).expect("claim moved");
+    env.claim(&night, bk, idx_night as u16).expect("claim night");
+    assert_eq!(amount(&env.svm, &night.base), 3 * U);
+    assert_eq!(amount(&env.svm, &maker2.quote) - m2q, 2 * 18_090 * U / 100 + 3 * np);
+    pass("moved orders fill in the night auction and claim as usual");
+
+    // all day slots are settled, night books are claimed: the vaults are empty
+    assert!((0..64).all(|i| env.day_slot(i).6 == 0), "day book is empty");
+    assert_eq!(env.vaults(), (0, 0), "after day, cross and night the vaults net to zero");
+    pass("day, cross and night settle to the unit: both vaults at zero");
+
+
     println!("max CU for place: {max_cu}");
 }
 
