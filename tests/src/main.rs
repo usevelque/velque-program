@@ -710,6 +710,18 @@ fn svm_tests(so: &str) {
     assert_eq!(filled_sell, volume);
     pass(&format!("full book: 64 orders, 65th rejected, clears at {} for {} shares in {cu} CU", price as f64 / U as f64, volume / U));
 
+    // worst case for the day: 63 sells in the book, one buy sweeps them all
+    env.set_reference(&admin, usd(18000)).expect("day again");
+    let asks: Vec<Trader> = (0..63).map(|_| env.trader(10 * U, 0)).collect();
+    for (i, t) in asks.iter().enumerate() {
+        env.place_day(t, SELL, usd(18000 + i as u64), U).expect("day ask");
+    }
+    let whale = env.trader(0, 1_000_000 * U);
+    let cu = env.place_day(&whale, BUY, usd(18100), 64 * U).expect("sweep");
+    assert_eq!(amount(&env.svm, &whale.base), 63 * U, "swept 63, the remaining 1 rested in the book");
+    pass(&format!("day book sweep: one buy takes 63 resting asks in {cu} CU"));
+
+
     println!("max CU for place: {max_cu}");
 }
 
