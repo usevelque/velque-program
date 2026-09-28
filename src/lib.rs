@@ -19,6 +19,7 @@
 //!   8  cancel_day(index)              pull a day order, return everything
 //!   9  claim_day(index)               claim what a day order has earned
 //!   10 close_day                      in Dark, move day orders into the auction
+//!   11 set_authority(new)             hand the oracle role to another key
 //!
 //! Both token programs are supported, SPL Token and Token-2022 (the real
 //! xStocks are issued on Token-2022). The vaults are the market's ATAs, and
@@ -102,6 +103,7 @@ pub fn process_instruction(
         Some((8, rest)) => day_exit(program_id, accounts, rest, true),
         Some((9, rest)) => day_exit(program_id, accounts, rest, false),
         Some((10, _)) => close_day(program_id, accounts),
+        Some((11, rest)) => set_authority(program_id, accounts, rest),
         _ => Err(ProgramError::InvalidInstructionData),
     }
 }
@@ -1161,3 +1163,22 @@ fn close_day(program_id: &Address, accounts: &[AccountView]) -> ProgramResult {
     Ok(())
 }
 
+// ================================================================ set_authority
+
+/// Hand the oracle role (set_reference) to another key. Signed by the current one.
+/// Accounts: 0 authority [signer], 1 market [writable]. Data: the new key, 32 bytes.
+fn set_authority(program_id: &Address, accounts: &[AccountView], data: &[u8]) -> ProgramResult {
+    let [authority, market, ..] = accounts else {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    };
+    let mv = load_market(program_id, market)?;
+    if !authority.is_signer() || authority.address() != &mv.authority {
+        return Err(VelqueError::Unauthorized.into());
+    }
+    let raw: [u8; 32] = data.get(0..32).ok_or(ProgramError::InvalidInstructionData)?.try_into().unwrap();
+    let new = Address::new_from_array(raw);
+    let mut mkv = *market;
+    let mut d = mkv.try_borrow_mut()?;
+    put_addr(&mut d, m::AUTHORITY, &new);
+    Ok(())
+}
