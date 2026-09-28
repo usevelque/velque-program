@@ -617,12 +617,25 @@ fn settle_book(d: &mut [u8], mv: &MarketView, t: i64) -> Result<(u64, usize), Pr
     Ok((out.price, rolls))
 }
 
+/// A remainder that found no room is not carried over: its escrow goes
+/// back into the entry and is paid out to the owner on claim.
+fn refund_roll(src: &mut [u8], so: usize) {
+    let back = get_u64(src, so + e::ESCROW) + get_u64(src, so + e::ROLL_ESCROW);
+    put_u64(src, so + e::ESCROW, back);
+    put_u64(src, so + e::ROLL_ESCROW, 0);
+    src[so + e::ROLL] = 0;
+}
+
 /// Carry the flagged orders over into the next window's book (Dark).
 fn roll_into_book(src: &mut [u8], dst: &mut [u8]) {
     let mut k = count(dst);
     for i in 0..count(src) {
         let so = entry_off(i);
         if src[so + e::ROLL] != 1 {
+            continue;
+        }
+        if k >= CAP {
+            refund_roll(src, so);
             continue;
         }
         let dof = entry_off(k);
@@ -652,6 +665,7 @@ fn roll_into_day(src: &mut [u8], day: &mut [u8], market: &AccountView) -> Progra
         let esc = get_u64(src, so + e::ROLL_ESCROW);
         let owner = get_addr(src, so);
         if day_insert(day, owner.as_ref(), get_u64(src, so + e::PRICE), rem, esc, src[so + e::SIDE], seq).is_none() {
+            refund_roll(src, so);
         }
     }
     Ok(())
