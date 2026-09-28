@@ -30,6 +30,7 @@
 //! | 312 | 8   | max_age: seconds the reference stays fresh       |
 //! | 320 | 8   | band_bps: day book band                          |
 //! | 328 | 8   | day_seq: day book queue counter                  |
+//! | 336 | 8   | min_notional: minimum order value in quote       |
 //!
 //! Session: if the reference was updated no more than max_age ago, it is Day
 //! (continuous book); otherwise it is Dark (windowed auctions).
@@ -91,8 +92,8 @@
 use crate::clearing::CAP;
 use pinocchio::Address;
 
-pub const MARKET_LEN: usize = 336;
-pub const MARKET_TAG: u8 = 7;
+pub const MARKET_LEN: usize = 344;
+pub const MARKET_TAG: u8 = 9; // v3.1: the program rejects v3 markets (tag 7)
 
 pub const HEADER: usize = 128;
 pub const ENTRY: usize = 80;
@@ -163,6 +164,7 @@ pub mod m {
     pub const MAX_AGE: usize = 312;
     pub const BAND_BPS: usize = 320;
     pub const DAY_SEQ: usize = 328;
+    pub const MIN_NOTIONAL: usize = 336;
 }
 
 pub mod b {
