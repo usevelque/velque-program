@@ -8,7 +8,7 @@
 //! first clearing after the reference turns fresh again is the opening cross.
 //!
 //! Instructions (first data byte):
-//!   0  init_market(window, tick, lot, reference, max_age, band_bps)
+//!   0  init_market(window, tick, lot, reference, max_age, band_bps, min_notional)
 //!   1  place(side, price, qty, tif)   auction order (Dark only)
 //!   2  cancel(index)                  cancel an order in the current window
 //!   3  clear                          clear the window; in Day this is the opening cross
@@ -75,6 +75,7 @@ pub enum VelqueError {
     OutOfBand = 14,
     NothingToMove = 15,
     BadProgram = 16,
+    TooSmall = 17,
 }
 
 impl From<VelqueError> for ProgramError {
@@ -162,6 +163,7 @@ struct MarketView {
     ref_at: i64,
     max_age: u64,
     band_bps: u64,
+    min_notional: u64,
 }
 
 impl MarketView {
@@ -199,6 +201,7 @@ fn load_market(program_id: &Address, market: &AccountView) -> Result<MarketView,
         ref_at: get_i64(&d, m::REF_AT),
         max_age: get_u64(&d, m::MAX_AGE),
         band_bps: get_u64(&d, m::BAND_BPS),
+        min_notional: get_u64(&d, m::MIN_NOTIONAL),
     })
 }
 
@@ -250,6 +253,15 @@ fn pay_out(leg: &Leg, to: &AccountView, market: &AccountView, mv: &MarketView, a
     let seeds = [Seed::from(SEED_MARKET), Seed::from(mv.base_mint.as_ref()), Seed::from(&bump)];
     TransferChecked::<&AccountView>::new(leg.vault, leg.mint, to, market, amount, leg.decimals)
         .invoke_signed_with_program(&[Signer::from(&seeds)], leg.prog)
+}
+
+/// An order must be worth at least the market's min_notional.
+fn check_notional(mv: &MarketView, price: u64, qty: u64) -> ProgramResult {
+    let v = quote_for(price, qty, mv.base_dec, false).ok_or(VelqueError::Math)?;
+    if v < mv.min_notional {
+        return Err(VelqueError::TooSmall.into());
+    }
+    Ok(())
 }
 
 fn book_key(market: &Address, auction_id: u64, program_id: &Address) -> (Address, u8) {
@@ -362,7 +374,9 @@ fn day_insert(d: &mut [u8], owner: &[u8], price: u64, qty: u64, escrow: u64, sid
 ///  8 Associated Token program
 ///  9 System program
 ///
-/// Data: window_secs, tick, lot, reference, max_age, band_bps (all u64).
+/// Data: window_secs, tick, lot, reference, max_age, band_bps, min_notional (all u64).
+/// min_notional: an order worth less than this amount in quote is rejected,
+/// otherwise the 64 book slots could be stuffed with dust for pennies.
 fn init_market(program_id: &Address, accounts: &[AccountView], data: &[u8]) -> ProgramResult {
     let [authority, market, base_mint, quote_mint, vbase, vquote, base_prog, quote_prog, _ata, system, ..] = accounts else {
         return Err(ProgramError::NotEnoughAccountKeys);
@@ -376,6 +390,7 @@ fn init_market(program_id: &Address, accounts: &[AccountView], data: &[u8]) -> P
     let reference = read_u64(data, 24)?;
     let max_age = read_u64(data, 32)?;
     let band_bps = read_u64(data, 40)?;
+    let min_notional = read_u64(data, 48)?;
     if window_secs == 0 || tick == 0 || lot == 0 || reference % tick != 0 || max_age == 0 || band_bps == 0 || band_bps > 5_000 {
         return Err(VelqueError::BadParams.into());
     }
@@ -434,6 +449,7 @@ fn init_market(program_id: &Address, accounts: &[AccountView], data: &[u8]) -> P
     put_i64(&mut d, m::REF_AT, 0); // start in Dark: no reference has arrived yet
     put_u64(&mut d, m::MAX_AGE, max_age);
     put_u64(&mut d, m::BAND_BPS, band_bps);
+    put_u64(&mut d, m::MIN_NOTIONAL, min_notional);
     Ok(())
 }
 
@@ -463,6 +479,7 @@ fn place(program_id: &Address, accounts: &[AccountView], data: &[u8]) -> Program
     if (side != BUY && side != SELL) || tif > TIF_GTC || price == 0 || price % mv.tick != 0 || qty == 0 || qty % mv.lot != 0 {
         return Err(VelqueError::BadParams.into());
     }
+    check_notional(&mv, price, qty)?;
     let t = now()?;
     if mv.is_day(t) {
         return Err(VelqueError::SessionDay.into());
@@ -958,6 +975,7 @@ fn place_day(program_id: &Address, accounts: &[AccountView], data: &[u8]) -> Pro
     if (side != BUY && side != SELL) || price == 0 || price % mv.tick != 0 || qty == 0 || qty % mv.lot != 0 {
         return Err(VelqueError::BadParams.into());
     }
+    check_notional(&mv, price, qty)?;
     if !mv.is_day(now()?) {
         return Err(VelqueError::SessionDark.into());
     }
