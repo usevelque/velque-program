@@ -721,6 +721,14 @@ fn svm_tests(so: &str) {
     assert_eq!(amount(&env.svm, &whale.base), 63 * U, "swept 63, the remaining 1 rested in the book");
     pass(&format!("day book sweep: one buy takes 63 resting asks in {cu} CU"));
 
+    // ---------------------------------------------------------------- dust and the oracle key
+
+    // orders under $10 are not accepted in the auction or in the day book
+    let dust = env.trader(10 * U, 10_000 * U);
+    expect_err(env.place_day(&dust, BUY, usd(18000), LOT), 17, "day order for $0.18");
+    expect_err(env.place_day(&dust, SELL, usd(18000), 50 * LOT), 17, "day order for $9");
+    env.place_day(&dust, BUY, usd(17990), 56 * LOT).expect("day order for $10.07");
+    pass("min notional: orders under $10 are rejected, so dust cannot fill the book");
 
     println!("max CU for place: {max_cu}");
 }
