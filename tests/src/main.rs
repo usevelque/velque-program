@@ -749,6 +749,47 @@ fn svm_tests(so: &str) {
     env.set_reference(&oracle, usd(18000)).expect("new oracle");
     pass("set_authority: the oracle role moves to a new key, the old one loses it");
 
+    // ---------------------------------------------------------------- cross with a full day book
+
+    // Dark: the reference goes stale, day orders move to the auction
+    env.warp(301);
+    env.clear(&cranker).expect("clear before night");
+    if env.close_day(&cranker).is_ok() {
+        let id = env.market_u64(M_AUCTION);
+        let _ = id;
+    }
+    env.warp(61);
+    env.clear(&cranker).expect("clear moved");
+    // night: a GTC buy of 5 @ 180.00 and a sell of 2 @ 179.90
+    let nb = env.trader(0, 100_000 * U);
+    let ns = env.trader(100 * U, 0);
+    let cross_id = env.market_u64(M_AUCTION);
+    env.place_tif(&nb, BUY, usd(18000), 5 * U, 1).expect("night gtc buy 5");
+    env.place(&ns, SELL, usd(17990), 2 * U).expect("night sell 2");
+    // Day: 64 sells at 181.00..181.63 fill every slot of the day book
+    env.set_reference(&oracle, usd(18000)).expect("day again");
+    let fillers: Vec<Trader> = (0..64).map(|_| env.trader(10 * U, 0)).collect();
+    for (i, t) in fillers.iter().enumerate() {
+        env.place_day(t, SELL, usd(18100 + i as u64), U).expect("filler ask");
+    }
+    assert!((0..64).all(|i| env.day_slot(i).6 == 1), "day book is full");
+    // the cross still clears; there is no room for the 3-share remainder, it comes back on claim
+    env.clear(&cranker).expect("cross with a full day book");
+    let bk = env.book(cross_id);
+    let d = env.svm.get_account(&bk).unwrap().data;
+    assert_eq!(u64_at(&d, 64), 2 * U, "cross: 2 shares sold");
+    let cp = u64_at(&d, 56);
+    assert!(!(0..64).any(|i| env.day_slot(i).0 == nb.kp.pubkey()), "the remainder did not rest in the day book");
+    let n = u16::from_le_bytes([d[4], d[5]]) as usize;
+    let idx = |k: &Pubkey| (0..n).find(|&i| d[128 + i * 80..128 + i * 80 + 32] == k.to_bytes()).unwrap() as u16;
+    let (bi, si) = (idx(&nb.kp.pubkey()), idx(&ns.kp.pubkey()));
+    env.claim(&nb, bk, bi).expect("claim with refund");
+    env.claim(&ns, bk, si).expect("claim seller");
+    let filled = u64_at(&d, 128 + bi as usize * 80 + 48);
+    assert!(filled > 0 && filled < 5 * U, "partially filled");
+    assert_eq!(amount(&env.svm, &nb.base), filled);
+    assert_eq!(amount(&env.svm, &nb.quote), 100_000 * U - (filled * cp).div_ceil(U), "pays only for what filled, the remainder returned in full");
+    pass("opening cross with a full day book still clears and refunds the remainder");
 
     println!("max CU for place: {max_cu}");
 }
