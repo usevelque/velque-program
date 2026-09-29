@@ -275,6 +275,16 @@ impl Env {
         accounts.extend(self.both_legs(t));
         self.send(Instruction { program_id: self.pid, accounts, data }, &t.kp)
     }
+    fn set_authority(&mut self, signer: &Keypair, new: &Pubkey) -> Result<u64, String> {
+        let mut data = vec![11u8];
+        data.extend_from_slice(new.as_ref());
+        let ix = Instruction {
+            program_id: self.pid,
+            accounts: vec![AccountMeta::new_readonly(signer.pubkey(), true), AccountMeta::new(self.market, false)],
+            data,
+        };
+        self.send(ix, signer)
+    }
     fn set_reference(&mut self, signer: &Keypair, price: u64) -> Result<u64, String> {
         let mut data = vec![5u8];
         data.extend_from_slice(&price.to_le_bytes());
@@ -729,6 +739,16 @@ fn svm_tests(so: &str) {
     expect_err(env.place_day(&dust, SELL, usd(18000), 50 * LOT), 17, "day order for $9");
     env.place_day(&dust, BUY, usd(17990), 56 * LOT).expect("day order for $10.07");
     pass("min notional: orders under $10 are rejected, so dust cannot fill the book");
+
+    // the oracle role is handed to another key; the old one can no longer set the reference
+    let oracle = Keypair::new();
+    env.svm.airdrop(&oracle.pubkey(), 1_000_000_000).unwrap();
+    expect_err(env.set_authority(&stranger, &oracle.pubkey()), 11, "a stranger cannot hand over the role");
+    env.set_authority(&admin, &oracle.pubkey()).expect("set_authority");
+    expect_err(env.set_reference(&admin, usd(18000)), 11, "the old key is no longer the oracle");
+    env.set_reference(&oracle, usd(18000)).expect("new oracle");
+    pass("set_authority: the oracle role moves to a new key, the old one loses it");
+
 
     println!("max CU for place: {max_cu}");
 }
