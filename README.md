@@ -2,6 +2,16 @@
 
 The on-chain program behind Velque, an order book for tokenized stocks on Solana built around the hours when Nasdaq is closed.
 
+Nasdaq prices a stock for 32.5 hours a week. Tokenized stocks trade all 168. Velque changes how trading works when the exchange price disappears:
+
+| Session | When | How orders match |
+| --- | --- | --- |
+| **Day** | The reference price is fresh (Nasdaq regular session) | Continuous book, price then time, inside a band around the reference |
+| **Dark** | The reference has gone stale (nights, weekends, holidays, halts) | Orders collect in fixed windows and clear together at one price |
+| **Opening cross** | The first clear after the reference comes back | The waiting window clears at once and hands its remainder to the Day book |
+
+The session is not a clock inside the program. It follows the freshness of the reference price: if the oracle stops posting, the market is Dark.
+
 ## How an auction clears
 
 One price for everyone in the window, chosen in this order:
