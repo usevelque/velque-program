@@ -12,6 +12,17 @@ Nasdaq prices a stock for 32.5 hours a week. Tokenized stocks trade all 168. Vel
 
 The session is not a clock inside the program. It follows the freshness of the reference price: if the oracle stops posting, the market is Dark.
 
+## Status
+
+Runs on Solana devnet. Not audited.
+
+| | |
+| --- | --- |
+| Program ID (devnet) | `MXG3VzXQucitJ4MSWWd1ddEat5FRS8KFF5j1uZRW7jz` |
+| Framework | [Pinocchio](https://github.com/anza-xyz/pinocchio) 0.11, `no_std`, no allocator |
+| Token programs | SPL Token and Token-2022 (xStocks are Token-2022) |
+| Binary size | 104,096 bytes |
+
 ## How an auction clears
 
 One price for everyone in the window, chosen in this order:
