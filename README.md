@@ -23,6 +23,25 @@ Runs on Solana devnet. Not audited.
 | Token programs | SPL Token and Token-2022 (xStocks are Token-2022) |
 | Binary size | 104,096 bytes |
 
+## Instructions
+
+The first byte of instruction data selects the instruction.
+
+| # | Instruction | What it does |
+| --- | --- | --- |
+| 0 | `init_market` | Create a market for a base mint: window length, tick, lot, reference, max age, band, minimum order value. Vaults are the market's associated token accounts. |
+| 1 | `place` | Place an auction order in the current window (Dark only). Funds go to escrow. |
+| 2 | `cancel` | Cancel an auction order before its window ends. Full refund. |
+| 3 | `clear` | Clear the window. Anyone can call it. In Day, with orders waiting, this is the opening cross. |
+| 4 | `claim` | Collect the fill and the change for an order in a cleared window. |
+| 5 | `set_reference` | Post the reference price. Only the market's oracle key. |
+| 6 | `close_book` | Close a fully settled window book and return its rent to whoever paid it. |
+| 7 | `place_day` | Place an order in the Day book. It matches at once at resting prices; the rest waits. |
+| 8 | `cancel_day` | Cancel a Day order. Refunds the escrow and pays what the order earned. |
+| 9 | `claim_day` | Collect what a resting Day order earned. |
+| 10 | `close_day` | In Dark, move resting Day orders into the current auction window as until-cancelled orders. |
+| 11 | `set_authority` | Hand the oracle role to another key. |
+
 ## How an auction clears
 
 One price for everyone in the window, chosen in this order:
