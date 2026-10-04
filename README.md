@@ -63,3 +63,11 @@ Orders priced better than the clearing price fill first. Orders exactly at the c
 
 Layouts are fixed offsets with no serializer. They are documented at the top of [`src/state.rs`](src/state.rs).
 
+## What the keys can do
+
+- **Oracle key** (market authority): post a reference price and hand the role to another key. It cannot move funds.
+- **Upgrade authority**: upgrade the program. It is a different key and is not used by any online service.
+- **Nobody** can withdraw from the vaults. Tokens leave escrow only as a fill, a refund on cancel, or a claim by the order's owner.
+
+Token-2022 note: xStocks carry a permanent delegate and a pause switch that belong to the issuer. The issuer can move tokens out of any account, including the program's vault, and can pause transfers. The program cannot prevent either.
+
