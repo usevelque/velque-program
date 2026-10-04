@@ -53,3 +53,13 @@ One price for everyone in the window, chosen in this order:
 
 Orders priced better than the clearing price fill first. Orders exactly at the clearing price share what is left pro rata by size, and lot remainders go out in order of arrival. The rule lives in [`src/clearing.rs`](src/clearing.rs) and has no dependencies, so it runs the same on chain and on a laptop. Clearing a full book of 64 orders costs about 49k compute units.
 
+## Accounts
+
+| Account | Seeds | Holds |
+| --- | --- | --- |
+| Market | `["market", base_mint]` | Mints, token programs, vaults, parameters, reference price and its timestamp |
+| Window book | `["book", market, auction_id]` | Up to 64 orders of one auction window and its result |
+| Day book | `["day", market]` | 64 slots of resting Day orders |
+
+Layouts are fixed offsets with no serializer. They are documented at the top of [`src/state.rs`](src/state.rs).
+
