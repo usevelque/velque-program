@@ -71,3 +71,14 @@ Layouts are fixed offsets with no serializer. They are documented at the top of 
 
 Token-2022 note: xStocks carry a permanent delegate and a pause switch that belong to the issuer. The issuer can move tokens out of any account, including the program's vault, and can pause transfers. The program cannot prevent either.
 
+## Build and test
+
+```bash
+cargo build-sbf
+cd tests && cargo run --release
+```
+
+The test binary first checks the clearing rule on the host, then loads the compiled `.so` into [LiteSVM](https://github.com/LiteSVM/litesvm) and runs the whole life of a market: a Token-2022 stock against an SPL quote token, night auctions, carry-over of until-cancelled orders, the opening cross, the Day book with its band, the end of the day, a full book, a dust order, and a cross into a full Day book. It prints one `PASS` line per check and settles every balance to the unit.
+
+The tests load `../target/deploy/velque.so` by default. Set `VELQUE_SO` to use a different build.
+
