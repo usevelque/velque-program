@@ -82,3 +82,16 @@ The test binary first checks the clearing rule on the host, then loads the compi
 
 The tests load `../target/deploy/velque.so` by default. Set `VELQUE_SO` to use a different build.
 
+## Check the deployed binary
+
+The program on devnet is built from this repository with the committed `Cargo.lock`. To check it yourself:
+
+```bash
+cargo build-sbf
+solana program dump MXG3VzXQucitJ4MSWWd1ddEat5FRS8KFF5j1uZRW7jz onchain.so -u devnet
+head -c $(stat -c%s target/deploy/velque.so) onchain.so | sha256sum
+sha256sum target/deploy/velque.so
+```
+
+Both lines should print `34f838b65909c04792430a4c986ad374b41ee35746e54c99140e55dcab27893c`. The dump is padded with zeros up to the allocated size, which is why it is trimmed first. Built with `cargo-build-sbf` 4.1.0 (platform-tools v1.54, rustc 1.89.0); a different toolchain can produce a different binary from the same source.
+
