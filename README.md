@@ -14,7 +14,7 @@ The session is not a clock inside the program. It follows the freshness of the r
 
 ## Status
 
-Runs on Solana devnet. Not audited.
+Runs on Solana devnet. Not audited. Do not use it with funds you cannot afford to lose.
 
 | | |
 | --- | --- |
