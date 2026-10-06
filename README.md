@@ -1,6 +1,6 @@
 # velque-program
 
-The on-chain program behind Velque, an order book for tokenized stocks on Solana built around the hours when Nasdaq is closed.
+The on-chain program behind [Velque](https://usevelque.xyz), an order book for tokenized stocks on Solana built around the hours when Nasdaq is closed.
 
 Nasdaq prices a stock for 32.5 hours a week. Tokenized stocks trade all 168. Velque changes how trading works when the exchange price disappears:
 
@@ -95,3 +95,13 @@ sha256sum target/deploy/velque.so
 
 Both lines should print `34f838b65909c04792430a4c986ad374b41ee35746e54c99140e55dcab27893c`. The dump is padded with zeros up to the allocated size, which is why it is trimmed first. Built with `cargo-build-sbf` 4.1.0 (platform-tools v1.54, rustc 1.89.0); a different toolchain can produce a different binary from the same source.
 
+## Related
+
+- [velque-sdk](https://github.com/usevelque/velque-sdk): JavaScript client and the clearing rule in JS
+- [auction-replay](https://github.com/usevelque/auction-replay): recompute any auction from chain data
+- [velque-keeper](https://github.com/usevelque/velque-keeper): the crank, the reference oracle and the test-market maker
+- [velque-app](https://github.com/usevelque/velque-app): the web app
+
+## License
+
+MIT
