@@ -1,0 +1,68 @@
+name: tests
+
+# Builds the program with the pinned toolchain and runs the whole test binary:
+# the clearing rule on the host, then the compiled .so end to end in LiteSVM.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  AGAVE: v4.1.2
+  PLATFORM_TOOLS: v1.54
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: cache the Solana toolchain
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local/share/solana
+            ~/.cache/solana
+          key: solana-${{ env.AGAVE }}-${{ env.PLATFORM_TOOLS }}
+
+      - name: install the Solana toolchain
+        run: |
+          if [ ! -x "$HOME/.local/share/solana/install/active_release/bin/cargo-build-sbf" ]; then
+            sh -c "$(curl -sSfL https://release.anza.xyz/$AGAVE/install)"
+          fi
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            .
+            tests
+
+      - name: build
+        run: cargo build-sbf --tools-version "$PLATFORM_TOOLS" -- --locked
+
+      - name: binary
+        run: |
+          size=$(stat -c%s target/deploy/velque.so)
+          hash=$(sha256sum target/deploy/velque.so | cut -d' ' -f1)
+          echo "| | |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| --- | --- |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| size | $size bytes |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| sha256 | \`$hash\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "$size bytes, sha256 $hash"
+
+      - name: tests
+        working-directory: tests
+        run: cargo run --release --locked
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: velque.so
+          path: target/deploy/velque.so

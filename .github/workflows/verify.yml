@@ -1,0 +1,76 @@
+name: on-chain binary
+
+# Rebuilds the program from this repository and compares it byte for byte with
+# what is deployed on devnet. Runs every day, so an upgrade that did not come
+# from this source turns the badge red within a day.
+
+on:
+  schedule:
+    - cron: '37 5 * * *'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  AGAVE: v4.1.2
+  PLATFORM_TOOLS: v1.54
+  PROGRAM_ID: MXG3VzXQucitJ4MSWWd1ddEat5FRS8KFF5j1uZRW7jz
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: cache the Solana toolchain
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local/share/solana
+            ~/.cache/solana
+          key: solana-${{ env.AGAVE }}-${{ env.PLATFORM_TOOLS }}
+
+      - name: install the Solana toolchain
+        run: |
+          if [ ! -x "$HOME/.local/share/solana/install/active_release/bin/cargo-build-sbf" ]; then
+            sh -c "$(curl -sSfL https://release.anza.xyz/$AGAVE/install)"
+          fi
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: build
+        run: cargo build-sbf --tools-version "$PLATFORM_TOOLS" -- --locked
+
+      - name: fetch the deployed program
+        run: |
+          # public devnet endpoints rate-limit: try each a few times
+          for url in https://api.devnet.solana.com https://solana-devnet.api.onfinality.io/public https://api.devnet.solana.com; do
+            solana program dump "$PROGRAM_ID" onchain.so -u "$url" && break
+            sleep 20
+          done
+          test -s onchain.so
+
+      - name: compare
+        run: |
+          size=$(stat -c%s target/deploy/velque.so)
+          built=$(sha256sum target/deploy/velque.so | cut -d' ' -f1)
+          chain=$(head -c "$size" onchain.so | sha256sum | cut -d' ' -f1)
+          # the account is allocated with room to grow: everything past the binary must be zeros
+          tail=$(tail -c +$((size + 1)) onchain.so | tr -d '\0' | wc -c)
+          {
+            echo "| | sha256 |"
+            echo "| --- | --- |"
+            echo "| built from this commit | \`$built\` |"
+            echo "| deployed on devnet | \`$chain\` |"
+            echo
+            echo "Binary: $size bytes. Non-zero bytes after it in the program account: $tail."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "built  $built"
+          echo "chain  $chain"
+          [ "$built" = "$chain" ] && [ "$tail" = "0" ]
