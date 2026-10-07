@@ -1,12 +1,13 @@
 name: on-chain binary
 
 # Rebuilds the program from this repository and compares it byte for byte with
-# what is deployed on devnet. Runs every day, so an upgrade that did not come
-# from this source turns the badge red within a day.
+# what is deployed on devnet, so an upgrade that did not come from this source
+# turns the badge red within a day. GitHub delays and drops `schedule` on quiet
+# repositories, which is why there are six ticks a day and not one.
 
 on:
   schedule:
-    - cron: '37 5 * * *'
+    - cron: '37 1,5,9,13,17,21 * * *'
   push:
     branches: [main]
   workflow_dispatch:
