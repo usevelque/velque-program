@@ -1,5 +1,10 @@
 # velque-program
 
+[![tests](https://img.shields.io/github/actions/workflow/status/usevelque/velque-program/ci.yml?branch=main&label=tests&style=flat-square&labelColor=2a1228)](https://github.com/usevelque/velque-program/actions/workflows/ci.yml)
+[![on-chain binary](https://img.shields.io/github/actions/workflow/status/usevelque/velque-program/verify.yml?branch=main&label=on-chain%20binary&style=flat-square&labelColor=2a1228)](https://github.com/usevelque/velque-program/actions/workflows/verify.yml)
+[![release](https://img.shields.io/github/v/release/usevelque/velque-program?color=f58aae&style=flat-square&labelColor=2a1228)](https://github.com/usevelque/velque-program/releases)
+[![license](https://img.shields.io/badge/license-MIT-f58aae?style=flat-square&labelColor=2a1228)](LICENSE)
+
 The on-chain program behind [Velque](https://usevelque.xyz), an order book for tokenized stocks on Solana built around the hours when Nasdaq is closed.
 
 Nasdaq prices a stock for 32.5 hours a week. Tokenized stocks trade all 168. Velque changes how trading works when the exchange price disappears:
@@ -11,6 +16,13 @@ Nasdaq prices a stock for 32.5 hours a week. Tokenized stocks trade all 168. Vel
 | **Opening cross** | The first clear after the reference comes back | The waiting window clears at once and hands its remainder to the Day book |
 
 The session is not a clock inside the program. It follows the freshness of the reference price: if the oracle stops posting, the market is Dark.
+
+<a href="https://usevelque.xyz/app">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/usevelque/usevelque/output/board-dark.svg">
+    <img src="https://raw.githubusercontent.com/usevelque/usevelque/output/board-light.svg" alt="The Velque test market right now, read from Solana devnet" width="100%">
+  </picture>
+</a>
 
 ## Status
 
@@ -74,9 +86,11 @@ Token-2022 note: xStocks carry a permanent delegate and a pause switch that belo
 ## Build and test
 
 ```bash
-cargo build-sbf
-cd tests && cargo run --release
+cargo build-sbf --tools-version v1.54
+cd tests && cargo run --release --locked
 ```
+
+The toolchain is Agave 4.1.2 with platform-tools v1.54. The [tests](https://github.com/usevelque/velque-program/actions/workflows/ci.yml) workflow runs the same two commands on every push.
 
 The test binary first checks the clearing rule on the host, then loads the compiled `.so` into [LiteSVM](https://github.com/LiteSVM/litesvm) and runs the whole life of a market: a Token-2022 stock against an SPL quote token, night auctions, carry-over of until-cancelled orders, the opening cross, the Day book with its band, the end of the day, a full book, a dust order, and a cross into a full Day book. It prints one `PASS` line per check and settles every balance to the unit.
 
@@ -84,10 +98,10 @@ The tests load `../target/deploy/velque.so` by default. Set `VELQUE_SO` to use a
 
 ## Check the deployed binary
 
-The program on devnet is built from this repository with the committed `Cargo.lock`. To check it yourself:
+The program on devnet is built from this repository with the committed `Cargo.lock`. The [on-chain binary](https://github.com/usevelque/velque-program/actions/workflows/verify.yml) workflow rebuilds it and compares it with devnet every day. To check it yourself:
 
 ```bash
-cargo build-sbf
+cargo build-sbf --tools-version v1.54
 solana program dump MXG3VzXQucitJ4MSWWd1ddEat5FRS8KFF5j1uZRW7jz onchain.so -u devnet
 head -c $(stat -c%s target/deploy/velque.so) onchain.so | sha256sum
 sha256sum target/deploy/velque.so

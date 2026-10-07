@@ -1,0 +1,46 @@
+name: Bug report
+description: The program did something the docs or the tests say it should not
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If this could move funds, block a market or corrupt a book, stop here and report it privately: Security tab, "Report a vulnerability".
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: The instruction you sent and what the program did.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: input
+    id: signature
+    attributes:
+      label: Transaction signature
+      description: A devnet signature that shows the problem, if you have one.
+  - type: input
+    id: market
+    attributes:
+      label: Market
+      description: Market address or the token symbol, for example tNVDAx.
+  - type: dropdown
+    id: session
+    attributes:
+      label: Session
+      options:
+        - Day
+        - Dark
+        - Opening cross
+        - Not sure
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps or a failing test
+      description: A case for tests/src/main.rs is the fastest way to a fix.
+      render: rust

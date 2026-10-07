@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a vulnerability
+    url: https://github.com/usevelque/velque-program/security/advisories/new
+    about: Private report for anything that could move funds or block a market.
+  - name: Documentation
+    url: https://usevelque.xyz/docs
+    about: Sessions, the clearing rule, accounts and risks.
