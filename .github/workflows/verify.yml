@@ -2,8 +2,12 @@ name: on-chain binary
 
 # Rebuilds the program from this repository and compares it byte for byte with
 # what is deployed on devnet, so an upgrade that did not come from this source
-# turns the badge red within a day. GitHub delays and drops `schedule` on quiet
-# repositories, which is why there are six ticks a day and not one.
+# turns the badge red within a day.
+#
+# GitHub delays and drops `schedule` on quiet repositories, so the workflow keeps
+# its own time: a chain run verifies, waits five and a half hours and starts the
+# next run of itself. The cron ticks are only a safety net for a chain that died.
+# Runs started by a push or by hand verify once and do not join the chain.
 
 on:
   schedule:
@@ -11,10 +15,19 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      chain:
+        description: Set by the workflow itself when it hands over to the next run
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+  actions: write            # needed to hand over to the next run
 
 concurrency:
-  group: verify-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ (github.event_name == 'schedule' || inputs.chain == 'true') && 'verify-chain' || format('verify-{0}', github.ref) }}
+  cancel-in-progress: ${{ !(github.event_name == 'schedule' || inputs.chain == 'true') }}
 
 env:
   AGAVE: v4.1.2
@@ -24,7 +37,9 @@ env:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 350
+    env:
+      CHAIN: ${{ github.event_name == 'schedule' || inputs.chain == 'true' }}
     steps:
       - uses: actions/checkout@v7
 
@@ -75,3 +90,14 @@ jobs:
           echo "built  $built"
           echo "chain  $chain"
           [ "$built" = "$chain" ] && [ "$tail" = "0" ]
+
+      - name: wait for the next check
+        if: env.CHAIN == 'true'
+        run: sleep 19800
+
+      - name: hand over to the next run
+        if: always() && env.CHAIN == 'true'
+        run: |
+          # a run that broke must not restart itself in a tight loop
+          [ "${{ job.status }}" = "success" ] || sleep 600
+          curl -sS -X POST             -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}"             -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/${{ github.repository }}/actions/workflows/verify.yml/dispatches"             -d '{"ref":"main","inputs":{"chain":"true"}}'
